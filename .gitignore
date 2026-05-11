@@ -1,0 +1,5 @@
+node_modules
+dist
+.env
+rempomix-output.xml
+/src/generated/prisma
