@@ -45,6 +45,9 @@ The content is organized as follows:
 package.json
 prisma/schema.prisma
 src/app.ts
+src/bootstrap/http-server.ts
+src/bootstrap/process-handlers.ts
+src/bootstrap/shutdown.ts
 src/common/errors/app-error.ts
 src/config/env.ts
 src/config/index.ts
@@ -57,6 +60,7 @@ src/middlewares/not-found.middleware.ts
 src/middlewares/rate-limit.middleware.ts
 src/middlewares/request-id.middleware.ts
 src/middlewares/request-logger.middleware.ts
+src/middlewares/validation.middleware.ts
 src/modules/admin/admin.controller.ts
 src/modules/admin/admin.repository.ts
 src/modules/admin/admin.routes.ts
@@ -80,15 +84,308 @@ src/modules/user/user.service.ts
 src/modules/user/user.types.ts
 src/modules/user/user.validation.ts
 src/routes/health.route.ts
+src/routes/index.ts
 src/server.ts
 src/types/express.d.ts
 src/utils/api-response.ts
 src/utils/async-handler.ts
+src/validators/request-validator.ts
 tsconfig.json
 </directory_structure>
 
 <files>
 This section contains the contents of the repository's files.
+
+<file path="src/bootstrap/http-server.ts">
+import { Server } from "node:http";
+
+import { Express } from "express";
+
+import { config } from "../config";
+import { logger } from "../logger";
+
+export const startHttpServer = (
+  app: Express,
+): Server => {
+  const server = app.listen(config.port, () => {
+    logger.info(
+      {
+        port: config.port,
+        environment: config.nodeEnv,
+      },
+      "HTTP server started",
+    );
+  });
+
+  server.keepAliveTimeout = 65_000;
+  server.headersTimeout = 66_000;
+
+  return server;
+};
+</file>
+
+<file path="src/bootstrap/process-handlers.ts">
+import { Server } from "node:http";
+
+import { shutdownServer } from "./shutdown";
+
+export const registerProcessHandlers = (
+  server: Server,
+): void => {
+  process.on("SIGINT", () => {
+    void shutdownServer(server, {
+      reason: "SIGINT",
+      exitCode: 0,
+    });
+  });
+
+  process.on("SIGTERM", () => {
+    void shutdownServer(server, {
+      reason: "SIGTERM",
+      exitCode: 0,
+    });
+  });
+
+  process.on("uncaughtException", (error) => {
+    void shutdownServer(server, {
+      reason: "uncaughtException",
+      exitCode: 1,
+      error,
+    });
+  });
+
+  process.on("unhandledRejection", (reason) => {
+    void shutdownServer(server, {
+      reason: "unhandledRejection",
+      exitCode: 1,
+      error: reason,
+    });
+  });
+};
+</file>
+
+<file path="src/bootstrap/shutdown.ts">
+import { Server } from "node:http";
+
+import { disconnectPrisma } from "../database/prisma";
+import { logger } from "../logger";
+
+const FORCE_SHUTDOWN_TIMEOUT_MS = 10_000;
+
+type ShutdownReason =
+  | "SIGINT"
+  | "SIGTERM"
+  | "uncaughtException"
+  | "unhandledRejection";
+
+interface ShutdownOptions {
+  reason: ShutdownReason;
+  exitCode: number;
+  error?: unknown;
+}
+
+let isShuttingDown = false;
+
+const closeHttpServer = (
+  server: Server,
+): Promise<void> => {
+  return new Promise((resolve, reject) => {
+    server.close((error) => {
+      if (error) {
+        reject(error);
+
+        return;
+      }
+
+      resolve();
+    });
+  });
+};
+
+const forceCloseConnections = (
+  server: Server,
+): void => {
+  if (typeof server.closeAllConnections === "function") {
+    server.closeAllConnections();
+  }
+};
+
+export const shutdownServer = async (
+  server: Server,
+  options: ShutdownOptions,
+): Promise<void> => {
+  if (isShuttingDown) {
+    logger.warn(
+      { reason: options.reason },
+      "Shutdown already in progress",
+    );
+
+    return;
+  }
+
+  isShuttingDown = true;
+
+  if (options.error) {
+    logger.fatal(
+      {
+        reason: options.reason,
+        error: options.error,
+      },
+      "Fatal process error received",
+    );
+  }
+
+  logger.info(
+    {
+      reason: options.reason,
+      exitCode: options.exitCode,
+    },
+    "Starting graceful shutdown",
+  );
+
+  const forceShutdownTimer = setTimeout(() => {
+    logger.error(
+      {
+        reason: options.reason,
+        timeoutMs: FORCE_SHUTDOWN_TIMEOUT_MS,
+      },
+      "Graceful shutdown timed out; forcing connection close",
+    );
+
+    forceCloseConnections(server);
+  }, FORCE_SHUTDOWN_TIMEOUT_MS);
+
+  forceShutdownTimer.unref();
+
+  try {
+    await closeHttpServer(server);
+
+    logger.info(
+      "HTTP server closed successfully",
+    );
+
+    await disconnectPrisma();
+
+    logger.info(
+      "Prisma disconnected successfully",
+    );
+
+    logger.info(
+      {
+        exitCode: options.exitCode,
+      },
+      "Graceful shutdown completed",
+    );
+
+    process.exit(options.exitCode);
+  } catch (error) {
+    logger.error(
+      { error },
+      "Graceful shutdown failed",
+    );
+
+    process.exit(1);
+  } finally {
+    clearTimeout(forceShutdownTimer);
+  }
+};
+</file>
+
+<file path="src/middlewares/validation.middleware.ts">
+export {
+  validateRequest,
+} from "../validators/request-validator";
+
+export type {
+  RequestValidationSchema,
+} from "../validators/request-validator";
+</file>
+
+<file path="src/routes/index.ts">
+import { Router } from "express";
+
+import { moduleRoutes } from "../modules";
+
+import healthRouter from "./health.route";
+
+interface RouteDefinition {
+  path: string;
+  router: Router;
+}
+
+const routeDefinitions: RouteDefinition[] = [
+  {
+    path: "/health",
+    router: healthRouter,
+  },
+  ...moduleRoutes,
+];
+
+export const routes = Router();
+
+routeDefinitions.forEach(({ path, router }) => {
+  routes.use(path, router);
+});
+</file>
+
+<file path="src/validators/request-validator.ts">
+import {
+  NextFunction,
+  Request,
+  RequestHandler,
+  Response,
+} from "express";
+import { ParamsDictionary } from "express-serve-static-core";
+import { z } from "zod";
+
+type RequestPartSchema<T> = z.ZodType<T>;
+
+export interface RequestValidationSchema<
+  TBody = unknown,
+  TParams extends ParamsDictionary = ParamsDictionary,
+  TQuery = unknown,
+> {
+  body?: RequestPartSchema<TBody>;
+  params?: RequestPartSchema<TParams>;
+  query?: RequestPartSchema<TQuery>;
+}
+
+export const validateRequest = <
+  TBody = unknown,
+  TParams extends ParamsDictionary = ParamsDictionary,
+  TQuery = unknown,
+>(
+  schema: RequestValidationSchema<
+    TBody,
+    TParams,
+    TQuery
+  >,
+): RequestHandler<TParams, unknown, TBody, TQuery> => {
+  return (
+    req: Request<TParams, unknown, TBody, TQuery>,
+    _res: Response,
+    next: NextFunction,
+  ): void => {
+    try {
+      if (schema.body) {
+        req.body = schema.body.parse(req.body);
+      }
+
+      if (schema.params) {
+        req.params = schema.params.parse(req.params);
+      }
+
+      if (schema.query) {
+        req.query = schema.query.parse(req.query);
+      }
+
+      next();
+    } catch (error) {
+      next(error);
+    }
+  };
+};
+</file>
 
 <file path=".env.example">
 PORT=
@@ -179,6 +476,7 @@ import { requestIdMiddleware } from "./middlewares/request-id.middleware";
 import { notFoundMiddleware } from "./middlewares/not-found.middleware";
 import { globalErrorMiddleware } from "./middlewares/error.middleware";
 import { apiRateLimiter } from "./middlewares/rate-limit.middleware";
+import { routes } from "./routes";
 
 import {
   corsConfig,
@@ -187,9 +485,12 @@ import {
 
 import { config } from "./config";
 
-import healthRouter from "./routes/health.route";
-
 const app: Express = express();
+
+app.set(
+  "trust proxy",
+  config.trustProxy,
+);
 
 app.use(requestIdMiddleware);
 
@@ -221,8 +522,8 @@ app.use(
 app.use(apiRateLimiter);
 
 app.use(
-  `${config.apiPrefix}/health`,
-  healthRouter,
+  config.apiPrefix,
+  routes,
 );
 
 app.use(notFoundMiddleware);
@@ -261,9 +562,16 @@ export class AppError extends Error {
 
 <file path="src/config/env.ts">
 import dotenv from "dotenv";
+import pino from "pino";
 import { z } from "zod";
 
 dotenv.config();
+
+const envLogger = pino({
+  level: "fatal",
+  base: undefined,
+  timestamp: pino.stdTimeFunctions.isoTime,
+});
 
 const envSchema = z.object({
   PORT: z.coerce.number().int().positive().default(5000),
@@ -278,6 +586,14 @@ const envSchema = z.object({
 
   CLIENT_URL: z.url(),
 
+  TRUST_PROXY: z
+    .union([
+      z.boolean(),
+      z.coerce.number().int().nonnegative(),
+      z.string().min(1),
+    ])
+    .default(1),
+
   JWT_ACCESS_SECRET: z
     .string()
     .min(10, "JWT_ACCESS_SECRET is too short"),
@@ -290,16 +606,12 @@ const envSchema = z.object({
 const parsedEnv = envSchema.safeParse(process.env);
 
 if (!parsedEnv.success) {
-  process.stderr.write(
-    "Invalid environment variables:\n",
-  );
-
-  process.stderr.write(
-    JSON.stringify(
-      parsedEnv.error.flatten().fieldErrors,
-      null,
-      2,
-    ),
+  envLogger.fatal(
+    {
+      errors:
+        parsedEnv.error.flatten().fieldErrors,
+    },
+    "Invalid environment variables",
   );
 
   process.exit(1);
@@ -317,6 +629,8 @@ export const config = {
   nodeEnv: env.NODE_ENV,
 
   apiPrefix: "/api/v1",
+
+  trustProxy: env.TRUST_PROXY,
   
   databaseUrl: env.DATABASE_URL,
 
@@ -377,13 +691,18 @@ export const prisma =
   new PrismaClient({
     log:
       config.nodeEnv === "development"
-        ? ["query", "error", "warn"]
+        ? ["error", "warn"]
         : ["error"],
   });
 
 if (config.nodeEnv !== "production") {
   globalForPrisma.prisma = prisma;
 }
+
+export const disconnectPrisma =
+  async (): Promise<void> => {
+    await prisma.$disconnect();
+  };
 </file>
 
 <file path="src/logger/index.ts">
@@ -471,7 +790,9 @@ export const globalErrorMiddleware = (
   if (error instanceof AppError) {
     statusCode = error.statusCode;
 
-    message = error.message;
+    message = error.isOperational
+      ? error.message
+      : "Internal Server Error";
 
     errorCode = error.errorCode;
 
@@ -500,8 +821,6 @@ export const globalErrorMiddleware = (
   }
 
   else if (error instanceof Error) {
-    message = error.message;
-
     stack = error.stack;
   }
 
@@ -516,7 +835,10 @@ export const globalErrorMiddleware = (
 
     errorCode,
 
-    message,
+    message:
+      error instanceof Error
+        ? error.message
+        : message,
 
     stack,
   });
@@ -574,7 +896,7 @@ export const apiRateLimiter = rateLimit({
 
   legacyHeaders: false,
 
-  message: {
+  message: () => ({
     success: false,
 
     message:
@@ -585,7 +907,7 @@ export const apiRateLimiter = rateLimit({
     details: null,
 
     timestamp: new Date().toISOString(),
-  },
+  }),
 });
 </file>
 
@@ -634,8 +956,9 @@ export const requestLoggerMiddleware = (
 
       statusCode: res.statusCode,
 
-      responseTime: `${responseTime}ms`,
-    });
+      responseTime,
+    },
+    "HTTP request completed");
   });
 
   next();
@@ -699,7 +1022,15 @@ export const requestLoggerMiddleware = (
 </file>
 
 <file path="src/modules/index.ts">
+import { Router } from "express";
 
+export interface ModuleRouteDefinition {
+  path: string;
+  router: Router;
+}
+
+export const moduleRoutes: ModuleRouteDefinition[] =
+  [];
 </file>
 
 <file path="src/modules/user/index.ts">
@@ -734,19 +1065,20 @@ export const requestLoggerMiddleware = (
 import { Router } from "express";
 
 import { config } from "../config";
+import { sendSuccessResponse } from "../utils/api-response";
 
 const router = Router();
 
 router.get("/", (_req, res) => {
-  return res.status(200).json({
-    success: true,
-
-    uptime: process.uptime(),
-
-    timestamp: new Date().toISOString(),
-
-    environment: config.nodeEnv,
-  });
+  return sendSuccessResponse(
+    res,
+    200,
+    "Health check passed",
+    {
+      uptime: process.uptime(),
+      environment: config.nodeEnv,
+    },
+  );
 });
 
 export default router;
@@ -754,13 +1086,12 @@ export default router;
 
 <file path="src/server.ts">
 import app from "./app";
-import { config } from "./config";
+import { startHttpServer } from "./bootstrap/http-server";
+import { registerProcessHandlers } from "./bootstrap/process-handlers";
 
-app.listen(config.port, () => {
-  process.stdout.write(
-    `Server running on port ${config.port}\n`,
-  );
-});
+const server = startHttpServer(app);
+
+registerProcessHandlers(server);
 </file>
 
 <file path="src/types/express.d.ts">

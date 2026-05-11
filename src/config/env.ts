@@ -1,7 +1,14 @@
 import dotenv from "dotenv";
+import pino from "pino";
 import { z } from "zod";
 
 dotenv.config();
+
+const envLogger = pino({
+  level: "fatal",
+  base: undefined,
+  timestamp: pino.stdTimeFunctions.isoTime,
+});
 
 const envSchema = z.object({
   PORT: z.coerce.number().int().positive().default(5000),
@@ -16,6 +23,14 @@ const envSchema = z.object({
 
   CLIENT_URL: z.url(),
 
+  TRUST_PROXY: z
+    .union([
+      z.boolean(),
+      z.coerce.number().int().nonnegative(),
+      z.string().min(1),
+    ])
+    .default(1),
+
   JWT_ACCESS_SECRET: z
     .string()
     .min(10, "JWT_ACCESS_SECRET is too short"),
@@ -28,16 +43,12 @@ const envSchema = z.object({
 const parsedEnv = envSchema.safeParse(process.env);
 
 if (!parsedEnv.success) {
-  process.stderr.write(
-    "Invalid environment variables:\n",
-  );
-
-  process.stderr.write(
-    JSON.stringify(
-      parsedEnv.error.flatten().fieldErrors,
-      null,
-      2,
-    ),
+  envLogger.fatal(
+    {
+      errors:
+        parsedEnv.error.flatten().fieldErrors,
+    },
+    "Invalid environment variables",
   );
 
   process.exit(1);

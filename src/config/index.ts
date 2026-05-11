@@ -6,6 +6,8 @@ export const config = {
   nodeEnv: env.NODE_ENV,
 
   apiPrefix: "/api/v1",
+
+  trustProxy: env.TRUST_PROXY,
   
   databaseUrl: env.DATABASE_URL,
 

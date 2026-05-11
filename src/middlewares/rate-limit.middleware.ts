@@ -9,7 +9,7 @@ export const apiRateLimiter = rateLimit({
 
   legacyHeaders: false,
 
-  message: {
+  message: () => ({
     success: false,
 
     message:
@@ -20,5 +20,5 @@ export const apiRateLimiter = rateLimit({
     details: null,
 
     timestamp: new Date().toISOString(),
-  },
+  }),
 });

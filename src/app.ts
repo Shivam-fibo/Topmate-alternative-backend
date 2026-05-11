@@ -9,6 +9,7 @@ import { requestIdMiddleware } from "./middlewares/request-id.middleware";
 import { notFoundMiddleware } from "./middlewares/not-found.middleware";
 import { globalErrorMiddleware } from "./middlewares/error.middleware";
 import { apiRateLimiter } from "./middlewares/rate-limit.middleware";
+import { routes } from "./routes";
 
 import {
   corsConfig,
@@ -17,9 +18,12 @@ import {
 
 import { config } from "./config";
 
-import healthRouter from "./routes/health.route";
-
 const app: Express = express();
+
+app.set(
+  "trust proxy",
+  config.trustProxy,
+);
 
 app.use(requestIdMiddleware);
 
@@ -51,8 +55,8 @@ app.use(
 app.use(apiRateLimiter);
 
 app.use(
-  `${config.apiPrefix}/health`,
-  healthRouter,
+  config.apiPrefix,
+  routes,
 );
 
 app.use(notFoundMiddleware);

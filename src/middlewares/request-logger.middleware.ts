@@ -26,8 +26,9 @@ export const requestLoggerMiddleware = (
 
       statusCode: res.statusCode,
 
-      responseTime: `${responseTime}ms`,
-    });
+      responseTime,
+    },
+    "HTTP request completed");
   });
 
   next();

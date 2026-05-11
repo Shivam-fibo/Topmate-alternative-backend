@@ -45,7 +45,9 @@ export const globalErrorMiddleware = (
   if (error instanceof AppError) {
     statusCode = error.statusCode;
 
-    message = error.message;
+    message = error.isOperational
+      ? error.message
+      : "Internal Server Error";
 
     errorCode = error.errorCode;
 
@@ -74,8 +76,6 @@ export const globalErrorMiddleware = (
   }
 
   else if (error instanceof Error) {
-    message = error.message;
-
     stack = error.stack;
   }
 
@@ -90,7 +90,10 @@ export const globalErrorMiddleware = (
 
     errorCode,
 
-    message,
+    message:
+      error instanceof Error
+        ? error.message
+        : message,
 
     stack,
   });

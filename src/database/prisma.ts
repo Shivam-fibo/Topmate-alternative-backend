@@ -12,10 +12,15 @@ export const prisma =
   new PrismaClient({
     log:
       config.nodeEnv === "development"
-        ? ["query", "error", "warn"]
+        ? ["error", "warn"]
         : ["error"],
   });
 
 if (config.nodeEnv !== "production") {
   globalForPrisma.prisma = prisma;
 }
+
+export const disconnectPrisma =
+  async (): Promise<void> => {
+    await prisma.$disconnect();
+  };
