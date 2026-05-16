@@ -1,9 +1,8 @@
-import { Router } from "express";
+import type { Router } from "express";
 
 export interface ModuleRouteDefinition {
   path: string;
   router: Router;
 }
 
-export const moduleRoutes: ModuleRouteDefinition[] =
-  [];
+export const moduleRoutes: ModuleRouteDefinition[] = [];

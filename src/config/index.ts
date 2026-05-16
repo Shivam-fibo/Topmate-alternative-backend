@@ -8,11 +8,10 @@ export const config = {
   apiPrefix: "/api/v1",
 
   trustProxy: env.TRUST_PROXY,
-  
+
   databaseUrl: env.DATABASE_URL,
 
   clientUrl: env.CLIENT_URL,
-  
 
   jwt: {
     accessSecret: env.JWT_ACCESS_SECRET,

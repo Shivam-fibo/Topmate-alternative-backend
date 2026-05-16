@@ -13,11 +13,7 @@ const envLogger = pino({
 const envSchema = z.object({
   PORT: z.coerce.number().int().positive().default(5000),
 
-  NODE_ENV: z.enum([
-    "development",
-    "production",
-    "test",
-  ]),
+  NODE_ENV: z.enum(["development", "production", "test"]),
 
   DATABASE_URL: z.url(),
 
@@ -31,13 +27,9 @@ const envSchema = z.object({
     ])
     .default(1),
 
-  JWT_ACCESS_SECRET: z
-    .string()
-    .min(10, "JWT_ACCESS_SECRET is too short"),
+  JWT_ACCESS_SECRET: z.string().min(10, "JWT_ACCESS_SECRET is too short"),
 
-  JWT_REFRESH_SECRET: z
-    .string()
-    .min(10, "JWT_REFRESH_SECRET is too short"),
+  JWT_REFRESH_SECRET: z.string().min(10, "JWT_REFRESH_SECRET is too short"),
 });
 
 const parsedEnv = envSchema.safeParse(process.env);
@@ -45,8 +37,7 @@ const parsedEnv = envSchema.safeParse(process.env);
 if (!parsedEnv.success) {
   envLogger.fatal(
     {
-      errors:
-        parsedEnv.error.flatten().fieldErrors,
+      errors: parsedEnv.error.flatten().fieldErrors,
     },
     "Invalid environment variables",
   );

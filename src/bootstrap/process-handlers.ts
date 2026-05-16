@@ -1,10 +1,8 @@
-import { Server } from "node:http";
+import type { Server } from "node:http";
 
 import { shutdownServer } from "./shutdown";
 
-export const registerProcessHandlers = (
-  server: Server,
-): void => {
+export const registerProcessHandlers = (server: Server): void => {
   process.on("SIGINT", () => {
     void shutdownServer(server, {
       reason: "SIGINT",

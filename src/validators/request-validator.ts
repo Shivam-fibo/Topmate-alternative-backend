@@ -1,11 +1,6 @@
-import {
-  NextFunction,
-  Request,
-  RequestHandler,
-  Response,
-} from "express";
-import { ParamsDictionary } from "express-serve-static-core";
-import { z } from "zod";
+import type { NextFunction, Request, RequestHandler, Response } from "express";
+import type { ParamsDictionary } from "express-serve-static-core";
+import type { z } from "zod";
 
 type RequestPartSchema<T> = z.ZodType<T>;
 
@@ -24,11 +19,7 @@ export const validateRequest = <
   TParams extends ParamsDictionary = ParamsDictionary,
   TQuery = unknown,
 >(
-  schema: RequestValidationSchema<
-    TBody,
-    TParams,
-    TQuery
-  >,
+  schema: RequestValidationSchema<TBody, TParams, TQuery>,
 ): RequestHandler<TParams, unknown, TBody, TQuery> => {
   return (
     req: Request<TParams, unknown, TBody, TQuery>,

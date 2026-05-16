@@ -1,13 +1,11 @@
-import { Server } from "node:http";
+import type { Server } from "node:http";
 
-import { Express } from "express";
+import type { Express } from "express";
 
 import { config } from "../config";
 import { logger } from "../logger";
 
-export const startHttpServer = (
-  app: Express,
-): Server => {
+export const startHttpServer = (app: Express): Server => {
   const server = app.listen(config.port, () => {
     logger.info(
       {

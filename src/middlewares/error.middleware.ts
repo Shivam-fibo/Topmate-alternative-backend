@@ -1,17 +1,9 @@
-import {
-  NextFunction,
-  Request,
-  Response,
-} from "express";
-
 import { Prisma } from "@prisma/client";
-
+import type { NextFunction, Request, Response } from "express";
 import { ZodError } from "zod";
 
-import { config } from "../config";
-
 import { AppError } from "../common/errors/app-error";
-
+import { config } from "../config";
 import { logger } from "../logger";
 
 interface ErrorResponse {
@@ -45,16 +37,12 @@ export const globalErrorMiddleware = (
   if (error instanceof AppError) {
     statusCode = error.statusCode;
 
-    message = error.isOperational
-      ? error.message
-      : "Internal Server Error";
+    message = error.isOperational ? error.message : "Internal Server Error";
 
     errorCode = error.errorCode;
 
     stack = error.stack;
-  }
-
-  else if (error instanceof ZodError) {
+  } else if (error instanceof ZodError) {
     statusCode = 400;
 
     message = "Validation failed";
@@ -62,20 +50,13 @@ export const globalErrorMiddleware = (
     errorCode = "VALIDATION_ERROR";
 
     details = error.flatten().fieldErrors;
-  }
-
-  else if (
-    error instanceof
-    Prisma.PrismaClientKnownRequestError
-  ) {
+  } else if (error instanceof Prisma.PrismaClientKnownRequestError) {
     statusCode = 400;
 
     message = "Database operation failed";
 
     errorCode = error.code;
-  }
-
-  else if (error instanceof Error) {
+  } else if (error instanceof Error) {
     stack = error.stack;
   }
 
@@ -90,10 +71,7 @@ export const globalErrorMiddleware = (
 
     errorCode,
 
-    message:
-      error instanceof Error
-        ? error.message
-        : message,
+    message: error instanceof Error ? error.message : message,
 
     stack,
   });
@@ -109,7 +87,6 @@ export const globalErrorMiddleware = (
 
     timestamp: new Date().toISOString(),
 
-    ...(config.nodeEnv === "development" &&
-      stack && { stack }),
+    ...(config.nodeEnv === "development" && stack && { stack }),
   });
 };

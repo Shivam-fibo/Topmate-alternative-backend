@@ -1,4 +1,4 @@
-import { Server } from "node:http";
+import type { Server } from "node:http";
 
 import { disconnectPrisma } from "../database/prisma";
 import { logger } from "../logger";
@@ -19,9 +19,7 @@ interface ShutdownOptions {
 
 let isShuttingDown = false;
 
-const closeHttpServer = (
-  server: Server,
-): Promise<void> => {
+const closeHttpServer = (server: Server): Promise<void> => {
   return new Promise((resolve, reject) => {
     server.close((error) => {
       if (error) {
@@ -35,9 +33,7 @@ const closeHttpServer = (
   });
 };
 
-const forceCloseConnections = (
-  server: Server,
-): void => {
+const forceCloseConnections = (server: Server): void => {
   if (typeof server.closeAllConnections === "function") {
     server.closeAllConnections();
   }
@@ -48,10 +44,7 @@ export const shutdownServer = async (
   options: ShutdownOptions,
 ): Promise<void> => {
   if (isShuttingDown) {
-    logger.warn(
-      { reason: options.reason },
-      "Shutdown already in progress",
-    );
+    logger.warn({ reason: options.reason }, "Shutdown already in progress");
 
     return;
   }
@@ -93,15 +86,11 @@ export const shutdownServer = async (
   try {
     await closeHttpServer(server);
 
-    logger.info(
-      "HTTP server closed successfully",
-    );
+    logger.info("HTTP server closed successfully");
 
     await disconnectPrisma();
 
-    logger.info(
-      "Prisma disconnected successfully",
-    );
+    logger.info("Prisma disconnected successfully");
 
     logger.info(
       {
@@ -112,10 +101,7 @@ export const shutdownServer = async (
 
     process.exit(options.exitCode);
   } catch (error) {
-    logger.error(
-      { error },
-      "Graceful shutdown failed",
-    );
+    logger.error({ error }, "Graceful shutdown failed");
 
     process.exit(1);
   } finally {

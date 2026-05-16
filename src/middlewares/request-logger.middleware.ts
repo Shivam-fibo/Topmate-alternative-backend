@@ -1,8 +1,4 @@
-import {
-  NextFunction,
-  Request,
-  Response,
-} from "express";
+import type { NextFunction, Request, Response } from "express";
 
 import { logger } from "../logger";
 
@@ -14,21 +10,22 @@ export const requestLoggerMiddleware = (
   const startTime = Date.now();
 
   res.on("finish", () => {
-    const responseTime =
-      Date.now() - startTime;
+    const responseTime = Date.now() - startTime;
 
-    logger.info({
-      requestId: req.requestId,
+    logger.info(
+      {
+        requestId: req.requestId,
 
-      method: req.method,
+        method: req.method,
 
-      route: req.originalUrl,
+        route: req.originalUrl,
 
-      statusCode: res.statusCode,
+        statusCode: res.statusCode,
 
-      responseTime,
-    },
-    "HTTP request completed");
+        responseTime,
+      },
+      "HTTP request completed",
+    );
   });
 
   next();

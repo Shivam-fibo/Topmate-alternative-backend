@@ -12,8 +12,7 @@ export const apiRateLimiter = rateLimit({
   message: () => ({
     success: false,
 
-    message:
-      "Too many requests, please try again later",
+    message: "Too many requests, please try again later",
 
     errorCode: "RATE_LIMIT_EXCEEDED",
 

@@ -1,8 +1,4 @@
-import {
-  NextFunction,
-  Request,
-  Response,
-} from "express";
+import type { NextFunction, Request, Response } from "express";
 
 import { AppError } from "../common/errors/app-error";
 
@@ -12,10 +8,6 @@ export const notFoundMiddleware = (
   next: NextFunction,
 ): void => {
   next(
-    new AppError(
-      `Route ${req.originalUrl} not found`,
-      404,
-      "ROUTE_NOT_FOUND",
-    ),
+    new AppError(`Route ${req.originalUrl} not found`, 404, "ROUTE_NOT_FOUND"),
   );
 };
