@@ -18,4 +18,12 @@ export const config = {
 
     refreshSecret: env.JWT_REFRESH_SECRET,
   },
+
+  mail: {
+    brevoApiKey: env.BREVO_API_KEY,
+
+    fromEmail: env.MAIL_FROM_EMAIL,
+
+    fromName: env.MAIL_FROM_NAME,
+  },
 } as const;

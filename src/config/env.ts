@@ -30,6 +30,12 @@ const envSchema = z.object({
   JWT_ACCESS_SECRET: z.string().min(10, "JWT_ACCESS_SECRET is too short"),
 
   JWT_REFRESH_SECRET: z.string().min(10, "JWT_REFRESH_SECRET is too short"),
+
+  BREVO_API_KEY: z.string().min(1),
+
+  MAIL_FROM_EMAIL: z.email(),
+
+  MAIL_FROM_NAME: z.string().min(1),
 });
 
 const parsedEnv = envSchema.safeParse(process.env);

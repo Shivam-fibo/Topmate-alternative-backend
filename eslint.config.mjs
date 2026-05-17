@@ -10,10 +10,7 @@ export default [
    |--------------------------------------------------------------------------
    */
   {
-    ignores: [
-      "dist/**",
-      "node_modules/**",
-    ],
+    ignores: ["dist/**", "node_modules/**"],
   },
 
   ...tseslint.configs.recommended,
@@ -38,8 +35,7 @@ export default [
        | Unused Imports
        |--------------------------------------------------------------------------
        */
-      "unused-imports/no-unused-imports":
-        "error",
+      "unused-imports/no-unused-imports": "error",
 
       /*
        |--------------------------------------------------------------------------
@@ -84,11 +80,9 @@ export default [
        | TypeScript Rules
        |--------------------------------------------------------------------------
        */
-      "@typescript-eslint/consistent-type-imports":
-        "warn",
+      "@typescript-eslint/consistent-type-imports": "warn",
 
-      "@typescript-eslint/no-explicit-any":
-        "warn",
+      "@typescript-eslint/no-explicit-any": "warn",
     },
   },
 
