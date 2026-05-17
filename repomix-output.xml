@@ -42,9 +42,14 @@ The content is organized as follows:
 <directory_structure>
 .env.example
 .gitignore
+.husky/pre-commit
+.prettierignore
+.prettierrc
+eslint.config.mjs
 package.json
 prisma/schema.prisma
 src/app.ts
+src/bootstrap/database.ts
 src/bootstrap/http-server.ts
 src/bootstrap/process-handlers.ts
 src/bootstrap/shutdown.ts
@@ -90,11 +95,47 @@ src/types/express.d.ts
 src/utils/api-response.ts
 src/utils/async-handler.ts
 src/validators/request-validator.ts
+test.txt
 tsconfig.json
 </directory_structure>
 
 <files>
 This section contains the contents of the repository's files.
+
+<file path=".husky/pre-commit">
+npx lint-staged
+</file>
+
+<file path="src/bootstrap/database.ts">
+import { connectPrisma } from "../database/prisma";
+import { logger } from "../logger";
+
+export const initializeDatabase =
+  async (): Promise<void> => {
+    try {
+      logger.info(
+        "Initializing database bootstrap",
+      );
+
+      await connectPrisma();
+
+      logger.info(
+        "Database bootstrap completed successfully",
+      );
+    } catch (error) {
+      logger.fatal(
+        { error },
+        "Database bootstrap failed",
+      );
+
+      process.exit(1);
+    }
+  };
+</file>
+
+<file path="test.txt">
+
+</file>
 
 <file path=".env.example">
 PORT=
@@ -103,6 +144,8 @@ NODE_ENV=
 
 DATABASE_URL=
 
+DIRECT_URL=
+
 CLIENT_URL=
 
 JWT_ACCESS_SECRET=
@@ -110,55 +153,120 @@ JWT_ACCESS_SECRET=
 JWT_REFRESH_SECRET=
 </file>
 
-<file path=".gitignore">
+<file path=".prettierignore">
 node_modules
 dist
+coverage
 .env
-rempomix-output.xml
-/src/generated/prisma
 </file>
 
-<file path="package.json">
+<file path=".prettierrc">
 {
-  "name": "backend-foundation",
-  "version": "1.0.0",
-  "main": "index.js",
-  "scripts": {
-    "dev": "tsx watch src/server.ts",
-    "build": "tsc",
-    "start": "node dist/server.js"
-  },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "description": "",
-  "dependencies": {
-    "@prisma/client": "^6.16.2",
-    "compression": "^1.8.1",
-    "cookie-parser": "^1.4.7",
-    "cors": "^2.8.6",
-    "dotenv": "^17.4.2",
-    "express": "^5.2.1",
-    "express-rate-limit": "^8.5.1",
-    "helmet": "^8.1.0",
-    "hpp": "^0.2.3",
-    "pino": "^10.3.1",
-    "pino-http": "^11.0.0",
-    "prisma": "^6.16.2",
-    "zod": "^4.4.3"
-  },
-  "devDependencies": {
-    "@types/compression": "^1.8.1",
-    "@types/cookie-parser": "^1.4.10",
-    "@types/cors": "^2.8.19",
-    "@types/express": "^5.0.6",
-    "@types/hpp": "^0.2.7",
-    "@types/node": "^25.6.2",
-    "pino-pretty": "^13.1.3",
-    "tsx": "^4.21.0",
-    "typescript": "^6.0.3"
-  }
+  "semi": true,
+  "singleQuote": false,
+  "tabWidth": 2,
+  "trailingComma": "all",
+  "printWidth": 80
 }
+</file>
+
+<file path="eslint.config.mjs">
+import tseslint from "typescript-eslint";
+import importPlugin from "eslint-plugin-import";
+import unusedImports from "eslint-plugin-unused-imports";
+import prettierConfig from "eslint-config-prettier";
+
+export default [
+  /*
+   |--------------------------------------------------------------------------
+   | Ignore Files
+   |--------------------------------------------------------------------------
+   */
+  {
+    ignores: [
+      "dist/**",
+      "node_modules/**",
+    ],
+  },
+
+  ...tseslint.configs.recommended,
+
+  {
+    files: ["src/**/*.{ts,tsx}"],
+
+    languageOptions: {
+      parserOptions: {
+        project: "./tsconfig.json",
+      },
+    },
+
+    plugins: {
+      import: importPlugin,
+      "unused-imports": unusedImports,
+    },
+
+    rules: {
+      /*
+       |--------------------------------------------------------------------------
+       | Unused Imports
+       |--------------------------------------------------------------------------
+       */
+      "unused-imports/no-unused-imports":
+        "error",
+
+      /*
+       |--------------------------------------------------------------------------
+       | Unused Variables
+       |--------------------------------------------------------------------------
+       */
+      "@typescript-eslint/no-unused-vars": [
+        "warn",
+        {
+          argsIgnorePattern: "^_",
+        },
+      ],
+
+      /*
+       |--------------------------------------------------------------------------
+       | Import Order
+       |--------------------------------------------------------------------------
+       */
+      "import/order": [
+        "warn",
+        {
+          groups: [
+            "builtin",
+            "external",
+            "internal",
+            "parent",
+            "sibling",
+            "index",
+          ],
+
+          "newlines-between": "always",
+
+          alphabetize: {
+            order: "asc",
+            caseInsensitive: true,
+          },
+        },
+      ],
+
+      /*
+       |--------------------------------------------------------------------------
+       | TypeScript Rules
+       |--------------------------------------------------------------------------
+       */
+      "@typescript-eslint/consistent-type-imports":
+        "warn",
+
+      "@typescript-eslint/no-explicit-any":
+        "warn",
+    },
+  },
+
+  prettierConfig,
+];
 </file>
 
 <file path="prisma/schema.prisma">
@@ -170,347 +278,9 @@ datasource db {
   provider = "postgresql"
 
   url = env("DATABASE_URL")
+
+  directUrl = env("DIRECT_URL")
 }
-</file>
-
-<file path="src/bootstrap/http-server.ts">
-import { Server } from "node:http";
-
-import { Express } from "express";
-
-import { config } from "../config";
-import { logger } from "../logger";
-
-export const startHttpServer = (
-  app: Express,
-): Server => {
-  const server = app.listen(config.port, () => {
-    logger.info(
-      {
-        port: config.port,
-        environment: config.nodeEnv,
-      },
-      "HTTP server started",
-    );
-  });
-
-  server.keepAliveTimeout = 65_000;
-  server.headersTimeout = 66_000;
-
-  return server;
-};
-</file>
-
-<file path="src/bootstrap/process-handlers.ts">
-import { Server } from "node:http";
-
-import { shutdownServer } from "./shutdown";
-
-export const registerProcessHandlers = (
-  server: Server,
-): void => {
-  process.on("SIGINT", () => {
-    void shutdownServer(server, {
-      reason: "SIGINT",
-      exitCode: 0,
-    });
-  });
-
-  process.on("SIGTERM", () => {
-    void shutdownServer(server, {
-      reason: "SIGTERM",
-      exitCode: 0,
-    });
-  });
-
-  process.on("uncaughtException", (error) => {
-    void shutdownServer(server, {
-      reason: "uncaughtException",
-      exitCode: 1,
-      error,
-    });
-  });
-
-  process.on("unhandledRejection", (reason) => {
-    void shutdownServer(server, {
-      reason: "unhandledRejection",
-      exitCode: 1,
-      error: reason,
-    });
-  });
-};
-</file>
-
-<file path="src/bootstrap/shutdown.ts">
-import { Server } from "node:http";
-
-import { disconnectPrisma } from "../database/prisma";
-import { logger } from "../logger";
-
-const FORCE_SHUTDOWN_TIMEOUT_MS = 10_000;
-
-type ShutdownReason =
-  | "SIGINT"
-  | "SIGTERM"
-  | "uncaughtException"
-  | "unhandledRejection";
-
-interface ShutdownOptions {
-  reason: ShutdownReason;
-  exitCode: number;
-  error?: unknown;
-}
-
-let isShuttingDown = false;
-
-const closeHttpServer = (
-  server: Server,
-): Promise<void> => {
-  return new Promise((resolve, reject) => {
-    server.close((error) => {
-      if (error) {
-        reject(error);
-
-        return;
-      }
-
-      resolve();
-    });
-  });
-};
-
-const forceCloseConnections = (
-  server: Server,
-): void => {
-  if (typeof server.closeAllConnections === "function") {
-    server.closeAllConnections();
-  }
-};
-
-export const shutdownServer = async (
-  server: Server,
-  options: ShutdownOptions,
-): Promise<void> => {
-  if (isShuttingDown) {
-    logger.warn(
-      { reason: options.reason },
-      "Shutdown already in progress",
-    );
-
-    return;
-  }
-
-  isShuttingDown = true;
-
-  if (options.error) {
-    logger.fatal(
-      {
-        reason: options.reason,
-        error: options.error,
-      },
-      "Fatal process error received",
-    );
-  }
-
-  logger.info(
-    {
-      reason: options.reason,
-      exitCode: options.exitCode,
-    },
-    "Starting graceful shutdown",
-  );
-
-  const forceShutdownTimer = setTimeout(() => {
-    logger.error(
-      {
-        reason: options.reason,
-        timeoutMs: FORCE_SHUTDOWN_TIMEOUT_MS,
-      },
-      "Graceful shutdown timed out; forcing connection close",
-    );
-
-    forceCloseConnections(server);
-  }, FORCE_SHUTDOWN_TIMEOUT_MS);
-
-  forceShutdownTimer.unref();
-
-  try {
-    await closeHttpServer(server);
-
-    logger.info(
-      "HTTP server closed successfully",
-    );
-
-    await disconnectPrisma();
-
-    logger.info(
-      "Prisma disconnected successfully",
-    );
-
-    logger.info(
-      {
-        exitCode: options.exitCode,
-      },
-      "Graceful shutdown completed",
-    );
-
-    process.exit(options.exitCode);
-  } catch (error) {
-    logger.error(
-      { error },
-      "Graceful shutdown failed",
-    );
-
-    process.exit(1);
-  } finally {
-    clearTimeout(forceShutdownTimer);
-  }
-};
-</file>
-
-<file path="src/common/errors/app-error.ts">
-export class AppError extends Error {
-  public readonly statusCode: number;
-
-  public readonly errorCode: string;
-
-  public readonly isOperational: boolean;
-
-  constructor(
-    message: string,
-    statusCode = 500,
-    errorCode = "INTERNAL_SERVER_ERROR",
-    isOperational = true,
-  ) {
-    super(message);
-
-    this.statusCode = statusCode;
-
-    this.errorCode = errorCode;
-
-    this.isOperational = isOperational;
-
-    Error.captureStackTrace(this, this.constructor);
-  }
-}
-</file>
-
-<file path="src/config/security.ts">
-import cors, { CorsOptions } from "cors";
-
-import helmet from "helmet";
-
-import { config } from "./index";
-
-const isProduction =
-  config.nodeEnv === "production";
-
-export const corsConfig: CorsOptions = {
-  origin: [config.clientUrl],
-
-  credentials: true,
-
-  methods: [
-    "GET",
-    "POST",
-    "PUT",
-    "PATCH",
-    "DELETE",
-  ],
-};
-
-export const helmetConfig = helmet({
-  crossOriginResourcePolicy: isProduction
-    ? { policy: "same-site" }
-    : false,
-});
-</file>
-
-<file path="src/logger/index.ts">
-import pino from "pino";
-
-import { pinoConfig } from "./pino";
-
-export const logger = pino(pinoConfig);
-</file>
-
-<file path="src/logger/pino.ts">
-import pino from "pino";
-
-import { config } from "../config";
-
-const isDevelopment =
-  config.nodeEnv === "development";
-
-export const pinoConfig: pino.LoggerOptions = {
-  level: isDevelopment ? "debug" : "info",
-
-  base: undefined,
-
-  timestamp: pino.stdTimeFunctions.isoTime,
-
-  transport: isDevelopment
-    ? {
-        target: "pino-pretty",
-
-        options: {
-          colorize: true,
-          translateTime: "SYS:standard",
-          ignore: "pid,hostname",
-        },
-      }
-    : undefined,
-};
-</file>
-
-<file path="src/middlewares/not-found.middleware.ts">
-import {
-  NextFunction,
-  Request,
-  Response,
-} from "express";
-
-import { AppError } from "../common/errors/app-error";
-
-export const notFoundMiddleware = (
-  req: Request,
-  _res: Response,
-  next: NextFunction,
-): void => {
-  next(
-    new AppError(
-      `Route ${req.originalUrl} not found`,
-      404,
-      "ROUTE_NOT_FOUND",
-    ),
-  );
-};
-</file>
-
-<file path="src/middlewares/request-id.middleware.ts">
-import { randomUUID } from "crypto";
-
-import { NextFunction, Request, Response } from "express";
-
-export const requestIdMiddleware = (
-  req: Request,
-  _res: Response,
-  next: NextFunction,
-): void => {
-  req.requestId = randomUUID();
-
-  next();
-};
-</file>
-
-<file path="src/middlewares/validation.middleware.ts">
-export {
-  validateRequest,
-} from "../validators/request-validator";
-
-export type {
-  RequestValidationSchema,
-} from "../validators/request-validator";
 </file>
 
 <file path="src/modules/admin/admin.controller.ts">
@@ -624,6 +394,419 @@ routeDefinitions.forEach(({ path, router }) => {
 });
 </file>
 
+<file path=".gitignore">
+node_modules
+dist
+.env
+/src/generated/prisma
+repomix-output.xml
+</file>
+
+<file path="package.json">
+{
+  "name": "backend-foundation",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "build": "tsc",
+    "start": "node dist/server.js",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier . --write",
+    "format:check": "prettier . --check",
+    "prepare": "husky",
+    "prisma:generate": "prisma generate",
+    "prisma:migrate": "prisma migrate dev",
+    "prisma:deploy": "prisma migrate deploy",
+    "prisma:studio": "prisma studio",
+    "prisma:reset": "prisma migrate reset",
+    "prisma:status": "prisma migrate status"
+  },
+  "lint-staged": {
+    "*.{js,ts,json}": [
+      "prettier --write",
+      "eslint --fix"
+    ]
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "@prisma/client": "^6.16.2",
+    "compression": "^1.8.1",
+    "cookie-parser": "^1.4.7",
+    "cors": "^2.8.6",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "express-rate-limit": "^8.5.1",
+    "helmet": "^8.1.0",
+    "hpp": "^0.2.3",
+    "pino": "^10.3.1",
+    "pino-http": "^11.0.0",
+    "prisma": "^6.16.2",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/compression": "^1.8.1",
+    "@types/cookie-parser": "^1.4.10",
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
+    "@types/hpp": "^0.2.7",
+    "@types/node": "^25.6.2",
+    "eslint": "^9.39.4",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-import": "^2.32.0",
+    "eslint-plugin-unused-imports": "^4.4.1",
+    "husky": "^9.1.7",
+    "lint-staged": "^16.4.0",
+    "pino-pretty": "^13.1.3",
+    "prettier": "^3.8.3",
+    "prettier-plugin-packagejson": "^3.0.2",
+    "tsx": "^4.21.0",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.59.3"
+  }
+}
+</file>
+
+<file path="src/bootstrap/http-server.ts">
+import type { Server } from "node:http";
+
+import type { Express } from "express";
+
+import { config } from "../config";
+import { logger } from "../logger";
+
+export const startHttpServer = (app: Express): Server => {
+  const server = app.listen(config.port, () => {
+    logger.info(
+      {
+        port: config.port,
+        environment: config.nodeEnv,
+      },
+      "HTTP server started",
+    );
+  });
+
+  server.keepAliveTimeout = 65_000;
+  server.headersTimeout = 66_000;
+
+  return server;
+};
+</file>
+
+<file path="src/bootstrap/process-handlers.ts">
+import type { Server } from "node:http";
+
+import { shutdownServer } from "./shutdown";
+
+export const registerProcessHandlers = (server: Server): void => {
+  process.on("SIGINT", () => {
+    void shutdownServer(server, {
+      reason: "SIGINT",
+      exitCode: 0,
+    });
+  });
+
+  process.on("SIGTERM", () => {
+    void shutdownServer(server, {
+      reason: "SIGTERM",
+      exitCode: 0,
+    });
+  });
+
+  process.on("uncaughtException", (error) => {
+    void shutdownServer(server, {
+      reason: "uncaughtException",
+      exitCode: 1,
+      error,
+    });
+  });
+
+  process.on("unhandledRejection", (reason) => {
+    void shutdownServer(server, {
+      reason: "unhandledRejection",
+      exitCode: 1,
+      error: reason,
+    });
+  });
+};
+</file>
+
+<file path="src/bootstrap/shutdown.ts">
+import type { Server } from "node:http";
+
+import { disconnectPrisma } from "../database/prisma";
+import { logger } from "../logger";
+
+const FORCE_SHUTDOWN_TIMEOUT_MS = 10_000;
+
+type ShutdownReason =
+  | "SIGINT"
+  | "SIGTERM"
+  | "uncaughtException"
+  | "unhandledRejection";
+
+interface ShutdownOptions {
+  reason: ShutdownReason;
+  exitCode: number;
+  error?: unknown;
+}
+
+let isShuttingDown = false;
+
+const closeHttpServer = (server: Server): Promise<void> => {
+  return new Promise((resolve, reject) => {
+    server.close((error) => {
+      if (error) {
+        reject(error);
+
+        return;
+      }
+
+      resolve();
+    });
+  });
+};
+
+const forceCloseConnections = (server: Server): void => {
+  if (typeof server.closeAllConnections === "function") {
+    server.closeAllConnections();
+  }
+};
+
+export const shutdownServer = async (
+  server: Server,
+  options: ShutdownOptions,
+): Promise<void> => {
+  if (isShuttingDown) {
+    logger.warn({ reason: options.reason }, "Shutdown already in progress");
+
+    return;
+  }
+
+  isShuttingDown = true;
+
+  if (options.error) {
+    logger.fatal(
+      {
+        reason: options.reason,
+        error: options.error,
+      },
+      "Fatal process error received",
+    );
+  }
+
+  logger.info(
+    {
+      reason: options.reason,
+      exitCode: options.exitCode,
+    },
+    "Starting graceful shutdown",
+  );
+
+  const forceShutdownTimer = setTimeout(() => {
+    logger.error(
+      {
+        reason: options.reason,
+        timeoutMs: FORCE_SHUTDOWN_TIMEOUT_MS,
+      },
+      "Graceful shutdown timed out; forcing connection close",
+    );
+
+    forceCloseConnections(server);
+  }, FORCE_SHUTDOWN_TIMEOUT_MS);
+
+  forceShutdownTimer.unref();
+
+  try {
+    await closeHttpServer(server);
+
+    logger.info("HTTP server closed successfully");
+
+    await disconnectPrisma();
+
+    logger.info("Prisma disconnected successfully");
+
+    logger.info(
+      {
+        exitCode: options.exitCode,
+      },
+      "Graceful shutdown completed",
+    );
+
+    process.exit(options.exitCode);
+  } catch (error) {
+    logger.error({ error }, "Graceful shutdown failed");
+
+    process.exit(1);
+  } finally {
+    clearTimeout(forceShutdownTimer);
+  }
+};
+</file>
+
+<file path="src/common/errors/app-error.ts">
+export class AppError extends Error {
+  public readonly statusCode: number;
+
+  public readonly errorCode: string;
+
+  public readonly isOperational: boolean;
+
+  constructor(
+    message: string,
+    statusCode = 500,
+    errorCode = "INTERNAL_SERVER_ERROR",
+    isOperational = true,
+  ) {
+    super(message);
+
+    this.statusCode = statusCode;
+
+    this.errorCode = errorCode;
+
+    this.isOperational = isOperational;
+
+    Error.captureStackTrace(this, this.constructor);
+  }
+}
+</file>
+
+<file path="src/config/security.ts">
+import type { CorsOptions } from "cors";
+import helmet from "helmet";
+
+import { config } from "./index";
+
+const isProduction = config.nodeEnv === "production";
+
+export const corsConfig: CorsOptions = {
+  origin: [config.clientUrl],
+
+  credentials: true,
+
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
+};
+
+export const helmetConfig = helmet({
+  crossOriginResourcePolicy: isProduction ? { policy: "same-site" } : false,
+});
+</file>
+
+<file path="src/logger/index.ts">
+import pino from "pino";
+
+import { pinoConfig } from "./pino";
+
+export const logger = pino(pinoConfig);
+</file>
+
+<file path="src/logger/pino.ts">
+import pino from "pino";
+
+import { config } from "../config";
+
+const isDevelopment = config.nodeEnv === "development";
+
+export const pinoConfig: pino.LoggerOptions = {
+  level: isDevelopment ? "debug" : "info",
+
+  base: undefined,
+
+  timestamp: pino.stdTimeFunctions.isoTime,
+
+  transport: isDevelopment
+    ? {
+        target: "pino-pretty",
+
+        options: {
+          colorize: true,
+          translateTime: "SYS:standard",
+          ignore: "pid,hostname",
+        },
+      }
+    : undefined,
+};
+</file>
+
+<file path="src/middlewares/not-found.middleware.ts">
+import type { NextFunction, Request, Response } from "express";
+
+import { AppError } from "../common/errors/app-error";
+
+export const notFoundMiddleware = (
+  req: Request,
+  _res: Response,
+  next: NextFunction,
+): void => {
+  next(
+    new AppError(`Route ${req.originalUrl} not found`, 404, "ROUTE_NOT_FOUND"),
+  );
+};
+</file>
+
+<file path="src/middlewares/request-id.middleware.ts">
+import { randomUUID } from "crypto";
+
+import type { NextFunction, Request, Response } from "express";
+
+export const requestIdMiddleware = (
+  req: Request,
+  _res: Response,
+  next: NextFunction,
+): void => {
+  req.requestId = randomUUID();
+
+  next();
+};
+</file>
+
+<file path="src/middlewares/validation.middleware.ts">
+export { validateRequest } from "../validators/request-validator";
+
+export type { RequestValidationSchema } from "../validators/request-validator";
+</file>
+
+<file path="src/server.ts">
+import app from "./app";
+
+import { initializeDatabase } from "./bootstrap/database";
+import { startHttpServer } from "./bootstrap/http-server";
+import { registerProcessHandlers } from "./bootstrap/process-handlers";
+
+import { logger } from "./logger";
+
+const bootstrapServer = async (): Promise<void> => {
+  try {
+    logger.info(
+      "Starting application bootstrap",
+    );
+
+    await initializeDatabase();
+
+    const server = startHttpServer(app);
+
+    registerProcessHandlers(server);
+
+    logger.info(
+      "Application bootstrap completed successfully",
+    );
+  } catch (error) {
+    logger.fatal(
+      { error },
+      "Application bootstrap failed",
+    );
+
+    process.exit(1);
+  }
+};
+
+void bootstrapServer();
+</file>
+
 <file path="src/types/express.d.ts">
 export {};
 
@@ -637,7 +820,7 @@ declare global {
 </file>
 
 <file path="src/utils/api-response.ts">
-import { Response } from "express";
+import type { Response } from "express";
 
 interface SuccessResponse<T> {
   success: true;
@@ -668,12 +851,7 @@ export const sendSuccessResponse = <T>(
 </file>
 
 <file path="src/utils/async-handler.ts">
-import {
-  NextFunction,
-  Request,
-  RequestHandler,
-  Response,
-} from "express";
+import type { NextFunction, Request, RequestHandler, Response } from "express";
 
 type AsyncController = (
   req: Request,
@@ -681,30 +859,17 @@ type AsyncController = (
   next: NextFunction,
 ) => Promise<unknown>;
 
-export const asyncHandler = (
-  controller: AsyncController,
-): RequestHandler => {
-  return (
-    req: Request,
-    res: Response,
-    next: NextFunction,
-  ) => {
-    Promise.resolve(
-      controller(req, res, next),
-    ).catch(next);
+export const asyncHandler = (controller: AsyncController): RequestHandler => {
+  return (req: Request, res: Response, next: NextFunction) => {
+    Promise.resolve(controller(req, res, next)).catch(next);
   };
 };
 </file>
 
 <file path="src/validators/request-validator.ts">
-import {
-  NextFunction,
-  Request,
-  RequestHandler,
-  Response,
-} from "express";
-import { ParamsDictionary } from "express-serve-static-core";
-import { z } from "zod";
+import type { NextFunction, Request, RequestHandler, Response } from "express";
+import type { ParamsDictionary } from "express-serve-static-core";
+import type { z } from "zod";
 
 type RequestPartSchema<T> = z.ZodType<T>;
 
@@ -723,11 +888,7 @@ export const validateRequest = <
   TParams extends ParamsDictionary = ParamsDictionary,
   TQuery = unknown,
 >(
-  schema: RequestValidationSchema<
-    TBody,
-    TParams,
-    TQuery
-  >,
+  schema: RequestValidationSchema<TBody, TParams, TQuery>,
 ): RequestHandler<TParams, unknown, TBody, TQuery> => {
   return (
     req: Request<TParams, unknown, TBody, TQuery>,
@@ -770,48 +931,34 @@ export const validateRequest = <
     "skipLibCheck": true,
     "moduleResolution": "NodeNext",
     "resolveJsonModule": true,
-    "types": [
-      "node"
-    ],
+    "types": ["node"],
     "sourceMap": true
   },
-  "include": [
-    "src"
-  ],
-  "exclude": [
-    "node_modules",
-    "dist"
-  ]
+  "include": ["src"],
+  "exclude": ["node_modules", "dist"]
 }
 </file>
 
 <file path="src/app.ts">
-import express, { Express } from "express";
-import cors from "cors";
 import compression from "compression";
 import cookieParser from "cookie-parser";
+import cors from "cors";
+import type { Express } from "express";
+import express from "express";
 import hpp from "hpp";
 
-import { requestLoggerMiddleware } from "./middlewares/request-logger.middleware";
-import { requestIdMiddleware } from "./middlewares/request-id.middleware";
-import { notFoundMiddleware } from "./middlewares/not-found.middleware";
-import { globalErrorMiddleware } from "./middlewares/error.middleware";
-import { apiRateLimiter } from "./middlewares/rate-limit.middleware";
-import { routes } from "./routes";
-
-import {
-  corsConfig,
-  helmetConfig,
-} from "./config/security";
-
 import { config } from "./config";
+import { corsConfig, helmetConfig } from "./config/security";
+import { globalErrorMiddleware } from "./middlewares/error.middleware";
+import { notFoundMiddleware } from "./middlewares/not-found.middleware";
+import { apiRateLimiter } from "./middlewares/rate-limit.middleware";
+import { requestIdMiddleware } from "./middlewares/request-id.middleware";
+import { requestLoggerMiddleware } from "./middlewares/request-logger.middleware";
+import { routes } from "./routes";
 
 const app: Express = express();
 
-app.set(
-  "trust proxy",
-  config.trustProxy,
-);
+app.set("trust proxy", config.trustProxy);
 
 app.use(requestIdMiddleware);
 
@@ -842,10 +989,7 @@ app.use(
 
 app.use(apiRateLimiter);
 
-app.use(
-  config.apiPrefix,
-  routes,
-);
+app.use(config.apiPrefix, routes);
 
 app.use(notFoundMiddleware);
 
@@ -870,11 +1014,7 @@ const envLogger = pino({
 const envSchema = z.object({
   PORT: z.coerce.number().int().positive().default(5000),
 
-  NODE_ENV: z.enum([
-    "development",
-    "production",
-    "test",
-  ]),
+  NODE_ENV: z.enum(["development", "production", "test"]),
 
   DATABASE_URL: z.url(),
 
@@ -888,13 +1028,9 @@ const envSchema = z.object({
     ])
     .default(1),
 
-  JWT_ACCESS_SECRET: z
-    .string()
-    .min(10, "JWT_ACCESS_SECRET is too short"),
+  JWT_ACCESS_SECRET: z.string().min(10, "JWT_ACCESS_SECRET is too short"),
 
-  JWT_REFRESH_SECRET: z
-    .string()
-    .min(10, "JWT_REFRESH_SECRET is too short"),
+  JWT_REFRESH_SECRET: z.string().min(10, "JWT_REFRESH_SECRET is too short"),
 });
 
 const parsedEnv = envSchema.safeParse(process.env);
@@ -902,8 +1038,7 @@ const parsedEnv = envSchema.safeParse(process.env);
 if (!parsedEnv.success) {
   envLogger.fatal(
     {
-      errors:
-        parsedEnv.error.flatten().fieldErrors,
+      errors: parsedEnv.error.flatten().fieldErrors,
     },
     "Invalid environment variables",
   );
@@ -925,11 +1060,10 @@ export const config = {
   apiPrefix: "/api/v1",
 
   trustProxy: env.TRUST_PROXY,
-  
+
   databaseUrl: env.DATABASE_URL,
 
   clientUrl: env.CLIENT_URL,
-  
 
   jwt: {
     accessSecret: env.JWT_ACCESS_SECRET,
@@ -943,6 +1077,7 @@ export const config = {
 import { PrismaClient } from "@prisma/client";
 
 import { config } from "../config";
+import { logger } from "../logger";
 
 const globalForPrisma =
   globalThis as unknown as {
@@ -962,27 +1097,57 @@ if (config.nodeEnv !== "production") {
   globalForPrisma.prisma = prisma;
 }
 
+export const connectPrisma = async (): Promise<void> => {
+  try {
+    logger.info(
+      "Connecting to PostgreSQL database",
+    );
+
+    await prisma.$connect();
+
+    await prisma.$queryRaw`SELECT 1`;
+
+    logger.info(
+      "PostgreSQL database connected successfully",
+    );
+  } catch (error) {
+    logger.fatal(
+      { error },
+      "Failed to connect to PostgreSQL database",
+    );
+
+    throw error;
+  }
+};
+
 export const disconnectPrisma =
   async (): Promise<void> => {
-    await prisma.$disconnect();
+    try {
+      logger.info(
+        "Disconnecting PostgreSQL database",
+      );
+
+      await prisma.$disconnect();
+
+      logger.info(
+        "PostgreSQL database disconnected successfully",
+      );
+    } catch (error) {
+      logger.error(
+        { error },
+        "Failed to disconnect PostgreSQL database",
+      );
+    }
   };
 </file>
 
 <file path="src/middlewares/error.middleware.ts">
-import {
-  NextFunction,
-  Request,
-  Response,
-} from "express";
-
 import { Prisma } from "@prisma/client";
-
+import type { NextFunction, Request, Response } from "express";
 import { ZodError } from "zod";
 
-import { config } from "../config";
-
 import { AppError } from "../common/errors/app-error";
-
+import { config } from "../config";
 import { logger } from "../logger";
 
 interface ErrorResponse {
@@ -1016,16 +1181,12 @@ export const globalErrorMiddleware = (
   if (error instanceof AppError) {
     statusCode = error.statusCode;
 
-    message = error.isOperational
-      ? error.message
-      : "Internal Server Error";
+    message = error.isOperational ? error.message : "Internal Server Error";
 
     errorCode = error.errorCode;
 
     stack = error.stack;
-  }
-
-  else if (error instanceof ZodError) {
+  } else if (error instanceof ZodError) {
     statusCode = 400;
 
     message = "Validation failed";
@@ -1033,20 +1194,13 @@ export const globalErrorMiddleware = (
     errorCode = "VALIDATION_ERROR";
 
     details = error.flatten().fieldErrors;
-  }
-
-  else if (
-    error instanceof
-    Prisma.PrismaClientKnownRequestError
-  ) {
+  } else if (error instanceof Prisma.PrismaClientKnownRequestError) {
     statusCode = 400;
 
     message = "Database operation failed";
 
     errorCode = error.code;
-  }
-
-  else if (error instanceof Error) {
+  } else if (error instanceof Error) {
     stack = error.stack;
   }
 
@@ -1061,10 +1215,7 @@ export const globalErrorMiddleware = (
 
     errorCode,
 
-    message:
-      error instanceof Error
-        ? error.message
-        : message,
+    message: error instanceof Error ? error.message : message,
 
     stack,
   });
@@ -1080,8 +1231,7 @@ export const globalErrorMiddleware = (
 
     timestamp: new Date().toISOString(),
 
-    ...(config.nodeEnv === "development" &&
-      stack && { stack }),
+    ...(config.nodeEnv === "development" && stack && { stack }),
   });
 };
 </file>
@@ -1101,8 +1251,7 @@ export const apiRateLimiter = rateLimit({
   message: () => ({
     success: false,
 
-    message:
-      "Too many requests, please try again later",
+    message: "Too many requests, please try again later",
 
     errorCode: "RATE_LIMIT_EXCEEDED",
 
@@ -1114,11 +1263,7 @@ export const apiRateLimiter = rateLimit({
 </file>
 
 <file path="src/middlewares/request-logger.middleware.ts">
-import {
-  NextFunction,
-  Request,
-  Response,
-} from "express";
+import type { NextFunction, Request, Response } from "express";
 
 import { logger } from "../logger";
 
@@ -1130,21 +1275,22 @@ export const requestLoggerMiddleware = (
   const startTime = Date.now();
 
   res.on("finish", () => {
-    const responseTime =
-      Date.now() - startTime;
+    const responseTime = Date.now() - startTime;
 
-    logger.info({
-      requestId: req.requestId,
+    logger.info(
+      {
+        requestId: req.requestId,
 
-      method: req.method,
+        method: req.method,
 
-      route: req.originalUrl,
+        route: req.originalUrl,
 
-      statusCode: res.statusCode,
+        statusCode: res.statusCode,
 
-      responseTime,
-    },
-    "HTTP request completed");
+        responseTime,
+      },
+      "HTTP request completed",
+    );
   });
 
   next();
@@ -1152,15 +1298,14 @@ export const requestLoggerMiddleware = (
 </file>
 
 <file path="src/modules/index.ts">
-import { Router } from "express";
+import type { Router } from "express";
 
 export interface ModuleRouteDefinition {
   path: string;
   router: Router;
 }
 
-export const moduleRoutes: ModuleRouteDefinition[] =
-  [];
+export const moduleRoutes: ModuleRouteDefinition[] = [];
 </file>
 
 <file path="src/routes/health.route.ts">
@@ -1172,28 +1317,13 @@ import { sendSuccessResponse } from "../utils/api-response";
 const router = Router();
 
 router.get("/", (_req, res) => {
-  return sendSuccessResponse(
-    res,
-    200,
-    "Health check passed",
-    {
-      uptime: process.uptime(),
-      environment: config.nodeEnv,
-    },
-  );
+  return sendSuccessResponse(res, 200, "Health check passed", {
+    uptime: process.uptime(),
+    environment: config.nodeEnv,
+  });
 });
 
 export default router;
-</file>
-
-<file path="src/server.ts">
-import app from "./app";
-import { startHttpServer } from "./bootstrap/http-server";
-import { registerProcessHandlers } from "./bootstrap/process-handlers";
-
-const server = startHttpServer(app);
-
-registerProcessHandlers(server);
 </file>
 
 </files>

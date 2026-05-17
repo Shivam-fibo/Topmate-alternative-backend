@@ -5,5 +5,162 @@ generator client {
 datasource db {
   provider = "postgresql"
 
-  url = env("DATABASE_URL")
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum RoleType {
+  USER
+  MENTOR
+  ADMIN
+}
+
+enum MentorOnboardingStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  COMPLETED
+}
+
+enum MentorApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  SUSPENDED
+}
+
+enum SchedulingConnectionStatus {
+  NOT_CONNECTED
+  CONNECTED
+  DISCONNECTED
+}
+
+model User {
+  id String @id @default(cuid())
+
+  email        String @unique
+  passwordHash String
+
+  isEmailVerified Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  roles    UserRole[]
+  sessions Session[]
+
+  emailVerifications EmailVerificationToken[]
+  passwordResets     PasswordResetToken[]
+  MentorProfile      MentorProfile?
+
+  @@index([email])
+}
+
+model Role {
+  id String @id @default(cuid())
+
+  name RoleType @unique
+
+  createdAt DateTime @default(now())
+
+  users UserRole[]
+}
+
+model UserRole {
+  userId String
+  roleId String
+
+  assignedAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([userId, roleId])
+  @@index([roleId])
+}
+
+model Session {
+  id String @id @default(cuid())
+
+  userId String
+
+  refreshTokenHash String
+
+  userAgent String?
+  ipAddress String?
+
+  expiresAt DateTime
+
+  lastUsedAt DateTime?
+
+  revokedAt DateTime?
+
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@index([revokedAt])
+}
+
+model EmailVerificationToken {
+  id String @id @default(cuid())
+
+  userId String
+
+  tokenHash String
+
+  expiresAt DateTime
+
+  usedAt DateTime?
+
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model PasswordResetToken {
+  id String @id @default(cuid())
+
+  userId String
+
+  tokenHash String
+
+  expiresAt DateTime
+
+  usedAt DateTime?
+
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model MentorProfile {
+  id String @id @default(cuid())
+
+  userId String @unique
+
+  onboardingStatus MentorOnboardingStatus @default(NOT_STARTED)
+
+  approvalStatus MentorApprovalStatus @default(PENDING)
+
+  schedulingConnectionStatus SchedulingConnectionStatus @default(NOT_CONNECTED)
+
+  rejectionReason String?
+
+  approvedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([approvalStatus])
+  @@index([onboardingStatus])
 }
