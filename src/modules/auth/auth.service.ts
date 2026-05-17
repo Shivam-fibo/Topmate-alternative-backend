@@ -12,6 +12,7 @@ import {
 } from "./auth.repository";
 import type { RegisterUserInput } from "./auth.types";
 import { hashPassword } from "./auth.utils";
+import { sendVerificationEmail } from "./services/email-verification.service";
 
 export const registerUser = async (input: RegisterUserInput) => {
   const existingUser = await findUserByEmail(input.email);
@@ -29,12 +30,10 @@ export const registerUser = async (input: RegisterUserInput) => {
   }
 
   const mentorRole =
-    input.role === RoleType.MENTOR
-      ? await findRoleByName(RoleType.MENTOR)
-      : null;
+    input.role === "MENTOR" ? await findRoleByName(RoleType.MENTOR) : null;
 
-  return runTransaction(async (tx) => {
-    const user = await createUser(
+  const user = await runTransaction(async (tx) => {
+    const createdUser = await createUser(
       {
         email: input.email,
 
@@ -45,7 +44,7 @@ export const registerUser = async (input: RegisterUserInput) => {
 
     await assignRoleToUser(
       {
-        userId: user.id,
+        userId: createdUser.id,
 
         roleId: userRole.id,
       },
@@ -55,16 +54,28 @@ export const registerUser = async (input: RegisterUserInput) => {
     if (mentorRole) {
       await assignRoleToUser(
         {
-          userId: user.id,
+          userId: createdUser.id,
 
           roleId: mentorRole.id,
         },
         tx,
       );
 
-      await createMentorProfile(user.id, tx);
+      await createMentorProfile(createdUser.id, tx);
     }
 
-    return user;
+    return createdUser;
   });
+
+  try {
+    await sendVerificationEmail({
+      userId: user.id,
+
+      email: user.email,
+    });
+  } catch (error) {
+    console.error("Failed to send verification email", error);
+  }
+
+  return user;
 };

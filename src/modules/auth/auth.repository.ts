@@ -7,6 +7,7 @@ import type {
   CreateSessionParams,
   RotateSessionTokenParams,
   AssignRoleParams,
+  CreateEmailVerificationTokenParams,
 } from "./auth.types";
 
 export const findUserByEmail = (email: string) => {
@@ -162,6 +163,73 @@ export const updateSessionLastUsed = (sessionId: string) => {
 
     data: {
       lastUsedAt: new Date(),
+    },
+  });
+};
+
+export const createEmailVerificationToken = (
+  data: CreateEmailVerificationTokenParams,
+  tx?: Prisma.TransactionClient,
+) => {
+  const database = tx ?? prisma;
+
+  return database.emailVerificationToken.create({
+    data,
+  });
+};
+
+export const findEmailVerificationToken = (tokenHash: string) => {
+  return prisma.emailVerificationToken.findFirst({
+    where: {
+      tokenHash,
+
+      usedAt: null,
+    },
+
+    include: {
+      user: true,
+    },
+
+    orderBy: {
+      createdAt: "desc",
+    },
+  });
+};
+
+export const markEmailVerificationTokenUsed = (tokenId: string) => {
+  return prisma.emailVerificationToken.update({
+    where: {
+      id: tokenId,
+    },
+
+    data: {
+      usedAt: new Date(),
+    },
+  });
+};
+
+export const markUserEmailVerified = (userId: string) => {
+  return prisma.user.update({
+    where: {
+      id: userId,
+    },
+
+    data: {
+      isEmailVerified: true,
+    },
+  });
+};
+
+export const incrementEmailVerificationAttempts = (tokenId: string) => {
+  return prisma.emailVerificationToken.update({
+    where: {
+      id: tokenId,
+    },
+
+    data: {
+      attemptCount: {
+        increment: 1,
+      },
     },
   });
 };

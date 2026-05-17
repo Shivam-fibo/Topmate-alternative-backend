@@ -1,37 +1,32 @@
-import { TransactionalEmailsApi, SendSmtpEmail } from "@getbrevo/brevo";
+import { BrevoClient } from "@getbrevo/brevo";
 
 import { config } from "../../../config";
 
 import type { EmailProvider, SendEmailOptions } from "./email.types";
 
-const brevoClient = new TransactionalEmailsApi();
-
-brevoClient.setApiKey(
-  TransactionalEmailsApiApiKeys.apiKey,
-  config.mail.brevoApiKey,
-);
+const brevoClient = new BrevoClient({
+  apiKey: config.mail.brevoApiKey,
+});
 
 class BrevoProvider implements EmailProvider {
   async sendEmail(options: SendEmailOptions): Promise<void> {
-    const email = new SendSmtpEmail();
+    await brevoClient.transactionalEmails.sendTransacEmail({
+      subject: options.subject,
 
-    email.subject = options.subject;
+      htmlContent: options.html,
 
-    email.htmlContent = options.html;
+      sender: {
+        email: config.mail.fromEmail,
 
-    email.sender = {
-      email: config.mail.fromEmail,
-
-      name: config.mail.fromName,
-    };
-
-    email.to = [
-      {
-        email: options.to,
+        name: config.mail.fromName,
       },
-    ];
 
-    await brevoClient.sendTransacEmail(email);
+      to: [
+        {
+          email: options.to,
+        },
+      ],
+    });
   }
 }
 

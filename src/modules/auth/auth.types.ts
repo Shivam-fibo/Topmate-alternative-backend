@@ -1,11 +1,9 @@
-import type { RoleType } from "@prisma/client";
-
 export interface RegisterUserInput {
   email: string;
 
   password: string;
 
-  role: RoleType.USER | RoleType.MENTOR;
+  role: "USER" | "MENTOR";
 }
 
 export interface CreateSessionParams {
@@ -38,4 +36,12 @@ export interface AssignRoleParams {
   userId: string;
 
   roleId: string;
+}
+
+export interface CreateEmailVerificationTokenParams {
+  userId: string;
+
+  tokenHash: string;
+
+  expiresAt: Date;
 }

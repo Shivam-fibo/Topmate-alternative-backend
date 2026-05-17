@@ -66,3 +66,7 @@ export const verifyAccessToken = (token: string): AccessTokenPayload => {
 export const verifyRefreshToken = (token: string): RefreshTokenPayload => {
   return jwt.verify(token, config.jwt.refreshSecret) as RefreshTokenPayload;
 };
+
+export const generateOtp = (): string => {
+  return Math.floor(100000 + Math.random() * 900000).toString();
+};
