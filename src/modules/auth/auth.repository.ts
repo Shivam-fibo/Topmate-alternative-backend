@@ -120,9 +120,9 @@ export const rotateSessionToken = (
 
       expiresAt: data.expiresAt,
 
-      tokenVersion: {
-        increment: 1,
-      },
+      // tokenVersion: {
+      //   increment: 1,
+      // },
 
       lastUsedAt: new Date(),
     },

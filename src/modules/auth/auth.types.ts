@@ -45,3 +45,29 @@ export interface CreateEmailVerificationTokenParams {
 
   expiresAt: Date;
 }
+
+export interface LoginUserInput {
+  email: string;
+
+  password: string;
+
+  userAgent?: string;
+
+  ipAddress?: string;
+}
+
+export interface AuthResponse {
+  accessToken: string;
+
+  refreshToken: string;
+
+  user: {
+    id: string;
+
+    email: string;
+
+    isEmailVerified: boolean;
+
+    roles: string[];
+  };
+}

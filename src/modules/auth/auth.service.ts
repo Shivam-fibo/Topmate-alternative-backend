@@ -1,4 +1,5 @@
 import { RoleType } from "@prisma/client";
+import { addDays } from "date-fns";
 
 import { AppError } from "../../common/errors/app-error";
 import { runTransaction } from "../../database/transaction";
@@ -9,9 +10,18 @@ import {
   createUser,
   findRoleByName,
   findUserByEmail,
+  rotateSessionToken,
 } from "./auth.repository";
+import { createSession } from "./auth.repository";
 import type { RegisterUserInput } from "./auth.types";
-import { hashPassword } from "./auth.utils";
+import type { LoginUserInput, AuthResponse } from "./auth.types";
+import {
+  hashPassword,
+  comparePassword,
+  generateAccessToken,
+  generateRefreshToken,
+} from "./auth.utils";
+import { hashToken } from "./auth.utils";
 import { sendVerificationEmail } from "./services/email-verification.service";
 
 export const registerUser = async (input: RegisterUserInput) => {
@@ -74,8 +84,92 @@ export const registerUser = async (input: RegisterUserInput) => {
       email: user.email,
     });
   } catch (error) {
-    console.error("Failed to send verification email", error);
+    console.error(
+      "Failed to send verification email",
+      JSON.stringify(error, null, 2),
+    );
   }
 
   return user;
+};
+
+export const loginUser = async (
+  input: LoginUserInput,
+): Promise<AuthResponse> => {
+  const user = await findUserByEmail(input.email);
+
+  if (!user) {
+    throw new AppError("Invalid credentials", 401, "INVALID_CREDENTIALS");
+  }
+
+  if (!user.isEmailVerified) {
+    throw new AppError("Email not verified", 403, "EMAIL_NOT_VERIFIED");
+  }
+
+  const isPasswordValid = await comparePassword(
+    input.password,
+    user.passwordHash,
+  );
+
+  if (!isPasswordValid) {
+    throw new AppError("Invalid credentials", 401, "INVALID_CREDENTIALS");
+  }
+
+  const session = await createSession({
+    userId: user.id,
+
+    refreshTokenHash: "",
+
+    expiresAt: addDays(new Date(), 30),
+
+    userAgent: input.userAgent,
+
+    ipAddress: input.ipAddress,
+  });
+
+  const roles = user.roles.map((userRole) => userRole.role.name);
+
+  const accessToken = generateAccessToken({
+    userId: user.id,
+
+    sessionId: session.id,
+
+    roles,
+
+    // tokenVersion:
+    // 1,
+  });
+
+  const refreshToken = generateRefreshToken({
+    sessionId: session.id,
+
+    // tokenVersion:
+    // 1,
+  });
+
+  const refreshTokenHash = hashToken(refreshToken);
+
+  await rotateSessionToken({
+    sessionId: session.id,
+
+    refreshTokenHash,
+
+    expiresAt: addDays(new Date(), 30),
+  });
+
+  return {
+    accessToken,
+
+    refreshToken,
+
+    user: {
+      id: user.id,
+
+      email: user.email,
+
+      isEmailVerified: user.isEmailVerified,
+
+      roles,
+    },
+  };
 };

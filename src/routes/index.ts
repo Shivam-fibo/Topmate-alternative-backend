@@ -1,6 +1,7 @@
 import { Router } from "express";
 
 import { moduleRoutes } from "../modules";
+import { authRouter } from "../modules/auth/auth.routes";
 
 import healthRouter from "./health.route";
 
@@ -15,6 +16,10 @@ const routeDefinitions: RouteDefinition[] = [
     router: healthRouter,
   },
   ...moduleRoutes,
+  {
+    path: "/auth",
+    router: authRouter,
+  },
 ];
 
 export const routes = Router();

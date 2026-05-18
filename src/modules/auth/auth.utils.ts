@@ -17,13 +17,13 @@ interface AccessTokenPayload {
 
   roles: string[];
 
-  tokenVersion: number;
+  // tokenVersion: number;
 }
 
 interface RefreshTokenPayload {
   sessionId: string;
 
-  tokenVersion: number;
+  // tokenVersion: number;
 }
 
 const SALT_ROUNDS = 12;
