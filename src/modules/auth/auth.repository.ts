@@ -82,8 +82,13 @@ export const createSession = (
   });
 };
 
-export const findSessionById = (sessionId: string) => {
-  return prisma.session.findUnique({
+export const findSessionById = (
+  sessionId: string,
+  tx?: Prisma.TransactionClient,
+) => {
+  const database = tx ?? prisma;
+
+  return database.session.findUnique({
     where: {
       id: sessionId,
     },
@@ -110,9 +115,17 @@ export const rotateSessionToken = (
 ) => {
   const database = tx ?? prisma;
 
-  return database.session.update({
+  return database.session.updateMany({
     where: {
       id: data.sessionId,
+
+      tokenVersion: data.currentTokenVersion,
+
+      revokedAt: null,
+
+      expiresAt: {
+        gt: new Date(),
+      },
     },
 
     data: {
@@ -120,19 +133,28 @@ export const rotateSessionToken = (
 
       expiresAt: data.expiresAt,
 
-      // tokenVersion: {
-      //   increment: 1,
-      // },
+      tokenVersion: data.nextTokenVersion,
+
+      userAgent: data.userAgent,
+
+      ipAddress: data.ipAddress,
 
       lastUsedAt: new Date(),
     },
   });
 };
 
-export const revokeSession = (sessionId: string) => {
-  return prisma.session.update({
+export const revokeSession = (
+  sessionId: string,
+  tx?: Prisma.TransactionClient,
+) => {
+  const database = tx ?? prisma;
+
+  return database.session.updateMany({
     where: {
       id: sessionId,
+
+      revokedAt: null,
     },
 
     data: {

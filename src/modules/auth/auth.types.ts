@@ -24,6 +24,26 @@ export interface RotateSessionTokenParams {
   refreshTokenHash: string;
 
   expiresAt: Date;
+
+  currentTokenVersion: number;
+
+  nextTokenVersion: number;
+
+  userAgent?: string;
+
+  ipAddress?: string;
+}
+
+export interface RefreshTokenInput {
+  refreshToken: string;
+
+  userAgent?: string;
+
+  ipAddress?: string;
+}
+
+export interface LogoutInput {
+  refreshToken: string;
 }
 
 export interface CreateUserParams {

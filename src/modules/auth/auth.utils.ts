@@ -17,16 +17,16 @@ interface AccessTokenPayload {
 
   roles: string[];
 
-  // tokenVersion: number;
+  tokenVersion: number;
 }
 
 interface RefreshTokenPayload {
   sessionId: string;
 
-  // tokenVersion: number;
+  tokenVersion: number;
 }
 
-const SALT_ROUNDS = 12;
+const SALT_ROUNDS = 10;
 
 export const hashPassword = async (password: string): Promise<string> => {
   return bcrypt.hash(password, SALT_ROUNDS);
@@ -45,6 +45,20 @@ export const generateSecureToken = (): string => {
 
 export const hashToken = (token: string): string => {
   return crypto.createHash("sha256").update(token).digest("hex");
+};
+
+export const compareTokenHash = (token: string, tokenHash: string): boolean => {
+  const incomingTokenHash = hashToken(token);
+
+  const incomingBuffer = Buffer.from(incomingTokenHash, "hex");
+
+  const storedBuffer = Buffer.from(tokenHash, "hex");
+
+  if (incomingBuffer.length !== storedBuffer.length) {
+    return false;
+  }
+
+  return crypto.timingSafeEqual(incomingBuffer, storedBuffer);
 };
 
 export const generateAccessToken = (payload: AccessTokenPayload): string => {

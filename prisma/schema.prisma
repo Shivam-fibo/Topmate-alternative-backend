@@ -85,7 +85,7 @@ model Session {
   userId String
 
   refreshTokenHash String
-  //  tokenVersion     Int      @default(0)
+  tokenVersion     Int      @default(0)
 
   userAgent String?
   ipAddress String?

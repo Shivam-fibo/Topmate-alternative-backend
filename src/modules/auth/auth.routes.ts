@@ -6,11 +6,15 @@ import {
   registerUserController,
   verifyEmailOtpController,
   loginUserController,
+  refreshTokenController,
+  logoutController,
 } from "./auth.controller";
 import {
   registerUserSchema,
   verifyEmailOtpSchema,
   loginSchema,
+  refreshTokenSchema,
+  logoutSchema,
 } from "./auth.validation";
 
 const authRouter = Router();
@@ -37,6 +41,22 @@ authRouter.post(
     body: loginSchema,
   }),
   loginUserController,
+);
+
+authRouter.post(
+  "/refresh",
+  validateRequest({
+    body: refreshTokenSchema,
+  }),
+  refreshTokenController,
+);
+
+authRouter.post(
+  "/logout",
+  validateRequest({
+    body: logoutSchema,
+  }),
+  logoutController,
 );
 
 export { authRouter };

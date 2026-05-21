@@ -3,26 +3,48 @@ import { addDays } from "date-fns";
 
 import { AppError } from "../../common/errors/app-error";
 import { runTransaction } from "../../database/transaction";
+import { logger } from "../../logger";
 
 import {
   assignRoleToUser,
   createMentorProfile,
+  createSession,
   createUser,
   findRoleByName,
+  findSessionById,
   findUserByEmail,
+  revokeSession,
   rotateSessionToken,
 } from "./auth.repository";
-import { createSession } from "./auth.repository";
-import type { RegisterUserInput } from "./auth.types";
-import type { LoginUserInput, AuthResponse } from "./auth.types";
+import type {
+  AuthResponse,
+  LoginUserInput,
+  LogoutInput,
+  RefreshTokenInput,
+  RegisterUserInput,
+} from "./auth.types";
 import {
   hashPassword,
   comparePassword,
+  compareTokenHash,
   generateAccessToken,
   generateRefreshToken,
+  verifyRefreshToken,
 } from "./auth.utils";
 import { hashToken } from "./auth.utils";
 import { sendVerificationEmail } from "./services/email-verification.service";
+
+const createInvalidRefreshTokenError = () => {
+  return new AppError("Invalid refresh token", 401, "INVALID_REFRESH_TOKEN");
+};
+
+const verifyRefreshTokenOrThrow = (refreshToken: string) => {
+  try {
+    return verifyRefreshToken(refreshToken);
+  } catch {
+    throw createInvalidRefreshTokenError();
+  }
+};
 
 export const registerUser = async (input: RegisterUserInput) => {
   const existingUser = await findUserByEmail(input.email);
@@ -136,15 +158,13 @@ export const loginUser = async (
 
     roles,
 
-    // tokenVersion:
-    // 1,
+    tokenVersion: session.tokenVersion,
   });
 
   const refreshToken = generateRefreshToken({
     sessionId: session.id,
 
-    // tokenVersion:
-    // 1,
+    tokenVersion: session.tokenVersion,
   });
 
   const refreshTokenHash = hashToken(refreshToken);
@@ -155,6 +175,10 @@ export const loginUser = async (
     refreshTokenHash,
 
     expiresAt: addDays(new Date(), 30),
+
+    currentTokenVersion: session.tokenVersion,
+
+    nextTokenVersion: session.tokenVersion,
   });
 
   return {
@@ -172,4 +196,143 @@ export const loginUser = async (
       roles,
     },
   };
+};
+
+export const refreshAuthToken = async (
+  input: RefreshTokenInput,
+): Promise<AuthResponse> => {
+  const tokenPayload = verifyRefreshTokenOrThrow(input.refreshToken);
+
+  return runTransaction(async (tx) => {
+    const session = await findSessionById(tokenPayload.sessionId, tx);
+
+    if (!session) {
+      throw createInvalidRefreshTokenError();
+    }
+
+    if (session.revokedAt) {
+      throw createInvalidRefreshTokenError();
+    }
+
+    if (session.expiresAt <= new Date()) {
+      throw createInvalidRefreshTokenError();
+    }
+
+    if (session.tokenVersion !== tokenPayload.tokenVersion) {
+      throw createInvalidRefreshTokenError();
+    }
+
+    if (!compareTokenHash(input.refreshToken, session.refreshTokenHash)) {
+      throw createInvalidRefreshTokenError();
+    }
+
+    const roles = session.user.roles.map((userRole) => userRole.role.name);
+
+    const nextTokenVersion = session.tokenVersion + 1;
+
+    const accessToken = generateAccessToken({
+      userId: session.user.id,
+
+      sessionId: session.id,
+
+      roles,
+
+      tokenVersion: nextTokenVersion,
+    });
+
+    const refreshToken = generateRefreshToken({
+      sessionId: session.id,
+
+      tokenVersion: nextTokenVersion,
+    });
+
+    const refreshTokenHash = hashToken(refreshToken);
+
+    const rotationResult = await rotateSessionToken(
+      {
+        sessionId: session.id,
+
+        refreshTokenHash,
+
+        expiresAt: addDays(new Date(), 30),
+
+        currentTokenVersion: session.tokenVersion,
+
+        nextTokenVersion,
+
+        userAgent: input.userAgent,
+
+        ipAddress: input.ipAddress,
+      },
+      tx,
+    );
+
+    if (rotationResult.count !== 1) {
+      throw createInvalidRefreshTokenError();
+    }
+
+    logger.info(
+      {
+        userId: session.user.id,
+
+        sessionId: session.id,
+      },
+      "Refresh token rotated",
+    );
+
+    return {
+      accessToken,
+
+      refreshToken,
+
+      user: {
+        id: session.user.id,
+
+        email: session.user.email,
+
+        isEmailVerified: session.user.isEmailVerified,
+
+        roles,
+      },
+    };
+  });
+};
+
+export const logoutUser = async (input: LogoutInput): Promise<void> => {
+  const tokenPayload = verifyRefreshTokenOrThrow(input.refreshToken);
+
+  await runTransaction(async (tx) => {
+    const session = await findSessionById(tokenPayload.sessionId, tx);
+
+    if (!session) {
+      throw createInvalidRefreshTokenError();
+    }
+
+    if (session.revokedAt) {
+      return;
+    }
+
+    if (session.expiresAt <= new Date()) {
+      throw createInvalidRefreshTokenError();
+    }
+
+    if (session.tokenVersion !== tokenPayload.tokenVersion) {
+      throw createInvalidRefreshTokenError();
+    }
+
+    if (!compareTokenHash(input.refreshToken, session.refreshTokenHash)) {
+      throw createInvalidRefreshTokenError();
+    }
+
+    await revokeSession(session.id, tx);
+
+    logger.info(
+      {
+        userId: session.userId,
+
+        sessionId: session.id,
+      },
+      "Session revoked",
+    );
+  });
 };

@@ -1,6 +1,13 @@
 import type { Request, Response } from "express";
 
-import { registerUser, loginUser } from "./auth.service";
+import { sendSuccessResponse } from "../../utils/api-response";
+
+import {
+  registerUser,
+  loginUser,
+  refreshAuthToken,
+  logoutUser,
+} from "./auth.service";
 import { verifyEmailOtp } from "./services/verify-email.service";
 
 export const registerUserController = async (
@@ -54,4 +61,28 @@ export const loginUserController = async (
 
     data: authResponse,
   });
+};
+
+export const refreshTokenController = async (
+  req: Request,
+  res: Response,
+): Promise<void> => {
+  const authResponse = await refreshAuthToken({
+    ...req.body,
+
+    userAgent: req.headers["user-agent"],
+
+    ipAddress: req.ip,
+  });
+
+  sendSuccessResponse(res, 200, "Token refreshed successfully", authResponse);
+};
+
+export const logoutController = async (
+  req: Request,
+  res: Response,
+): Promise<void> => {
+  await logoutUser(req.body);
+
+  sendSuccessResponse(res, 200, "Logout successful", null);
 };
