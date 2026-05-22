@@ -26,4 +26,10 @@ export const config = {
 
     fromName: env.MAIL_FROM_NAME,
   },
+
+  admin: {
+    email: env.ADMIN_EMAIL,
+
+    password: env.ADMIN_PASSWORD,
+  },
 } as const;

@@ -36,6 +36,10 @@ const envSchema = z.object({
   MAIL_FROM_EMAIL: z.email(),
 
   MAIL_FROM_NAME: z.string().min(1),
+
+  ADMIN_EMAIL: z.email(),
+
+  ADMIN_PASSWORD: z.string().min(8),
 });
 
 const parsedEnv = envSchema.safeParse(process.env);
