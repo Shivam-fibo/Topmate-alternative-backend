@@ -34,6 +34,17 @@ enum SchedulingConnectionStatus {
   DISCONNECTED
 }
 
+
+enum OnboardingFieldType {
+  TEXT
+  TEXTAREA
+  NUMBER
+  SELECT
+  MULTI_SELECT
+  DATE
+  FILE
+}
+
 model User {
   id String @id @default(cuid())
 
@@ -166,4 +177,61 @@ model MentorProfile {
 
   @@index([approvalStatus])
   @@index([onboardingStatus])
+}
+
+
+
+
+
+// onboarding categories for mentors
+model OnboardingCategory {
+  id String @id @default(cuid())
+
+  name String @unique
+
+  slug String @unique
+
+  description String?
+
+  isActive Boolean @default(true)
+
+  createdAt DateTime @default(now())
+
+  updatedAt DateTime @updatedAt
+
+  fields OnboardingField[]
+}
+
+
+
+model OnboardingField {
+  id String @id @default(cuid())
+
+  categoryId String
+
+  label String
+
+  fieldKey String
+
+  fieldType OnboardingFieldType
+
+  placeholder String?
+
+  helpText String?
+
+  isRequired Boolean @default(false)
+
+  sortOrder Int
+
+  isActive Boolean @default(true)
+
+  options Json?
+
+  createdAt DateTime @default(now())
+
+  updatedAt DateTime @updatedAt
+
+  category OnboardingCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@index([categoryId])
 }

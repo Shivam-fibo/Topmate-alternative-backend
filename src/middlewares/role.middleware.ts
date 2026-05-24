@@ -1,7 +1,6 @@
 import type { RoleType } from "@prisma/client";
 import type { NextFunction, Request, Response } from "express";
 
-
 import { AppError } from "../common/errors/app-error";
 
 export const requireRoles = (allowedRoles: RoleType[]) => {
