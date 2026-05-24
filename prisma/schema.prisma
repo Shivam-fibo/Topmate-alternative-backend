@@ -34,7 +34,6 @@ enum SchedulingConnectionStatus {
   DISCONNECTED
 }
 
-
 enum OnboardingFieldType {
   TEXT
   TEXTAREA
@@ -43,6 +42,12 @@ enum OnboardingFieldType {
   MULTI_SELECT
   DATE
   FILE
+}
+
+enum OnboardingSubmissionStatus {
+  PENDING
+  APPROVED
+  REJECTED
 }
 
 model User {
@@ -61,8 +66,9 @@ model User {
   roles    UserRole[]
   sessions Session[]
 
-  emailVerifications EmailVerificationToken[]
-  passwordResets     PasswordResetToken[]
+  emailVerifications   EmailVerificationToken[]
+  passwordResets       PasswordResetToken[]
+  OnboardingSubmission OnboardingSubmission[]
 
   @@index([email])
 }
@@ -96,7 +102,7 @@ model Session {
   userId String
 
   refreshTokenHash String
-  tokenVersion     Int      @default(0)
+  tokenVersion     Int    @default(0)
 
   userAgent String?
   ipAddress String?
@@ -127,8 +133,8 @@ model EmailVerificationToken {
 
   usedAt DateTime?
 
-  createdAt DateTime @default(now())
-  attemptCount Int @default(0)
+  createdAt    DateTime @default(now())
+  attemptCount Int      @default(0)
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -179,10 +185,6 @@ model MentorProfile {
   @@index([onboardingStatus])
 }
 
-
-
-
-
 // onboarding categories for mentors
 model OnboardingCategory {
   id String @id @default(cuid())
@@ -199,10 +201,9 @@ model OnboardingCategory {
 
   updatedAt DateTime @updatedAt
 
-  fields OnboardingField[]
+  fields               OnboardingField[]
+  OnboardingSubmission OnboardingSubmission[]
 }
-
-
 
 model OnboardingField {
   id String @id @default(cuid())
@@ -231,7 +232,57 @@ model OnboardingField {
 
   updatedAt DateTime @updatedAt
 
-  category OnboardingCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  category                   OnboardingCategory           @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  OnboardingSubmissionAnswer OnboardingSubmissionAnswer[]
 
   @@index([categoryId])
+}
+
+model OnboardingSubmission {
+  id String @id @default(cuid())
+
+  userId String
+
+  categoryId String
+
+  status OnboardingSubmissionStatus @default(PENDING)
+
+  submittedAt DateTime @default(now())
+
+  reviewedAt DateTime?
+
+  reviewNotes String?
+
+  createdAt DateTime @default(now())
+
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  category OnboardingCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  answers OnboardingSubmissionAnswer[]
+
+  @@index([userId])
+  @@index([categoryId])
+  @@index([status])
+}
+
+model OnboardingSubmissionAnswer {
+  id String @id @default(cuid())
+
+  submissionId String
+
+  fieldId String
+
+  value Json
+
+  createdAt DateTime @default(now())
+
+  submission OnboardingSubmission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+
+  field OnboardingField @relation(fields: [fieldId], references: [id], onDelete: Cascade)
+
+  @@index([submissionId])
+  @@index([fieldId])
 }

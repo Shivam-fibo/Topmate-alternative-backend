@@ -1,7 +1,6 @@
 import { OnboardingFieldType } from "@prisma/client";
 import { z } from "zod";
 
-
 export const createOnboardingFieldSchema = {
   body: z.object({
     categoryId: z.string().cuid(),
