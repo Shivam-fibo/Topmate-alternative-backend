@@ -8,6 +8,14 @@ import {
   getFieldsByCategorySlugService,
 } from "./onboarding-field.service";
 
+type CategoryIdParams = {
+  categoryId: string;
+};
+
+type CategorySlugParams = {
+  slug: string;
+};
+
 export const createOnboardingFieldController = async (
   req: Request,
   res: Response,
@@ -18,7 +26,7 @@ export const createOnboardingFieldController = async (
 };
 
 export const getFieldsByCategoryIdController = async (
-  req: Request,
+  req: Request<CategoryIdParams>,
   res: Response,
 ): Promise<void> => {
   const fields = await getFieldsByCategoryIdService(req.params.categoryId);
@@ -32,7 +40,7 @@ export const getFieldsByCategoryIdController = async (
 };
 
 export const getFieldsByCategorySlugController = async (
-  req: Request,
+  req: Request<CategorySlugParams>,
   res: Response,
 ): Promise<void> => {
   const fields = await getFieldsByCategorySlugService(req.params.slug);

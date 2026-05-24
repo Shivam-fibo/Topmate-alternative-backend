@@ -1,6 +1,6 @@
 import type { OnboardingFieldType, Prisma } from "@prisma/client";
 
-import { prisma } from "../../database/prisma";
+import { prisma } from "../../../database/prisma";
 
 interface CreateOnboardingFieldParams {
   categoryId: string;

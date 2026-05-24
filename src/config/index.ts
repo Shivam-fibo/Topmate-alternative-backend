@@ -32,4 +32,12 @@ export const config = {
 
     password: env.ADMIN_PASSWORD,
   },
+
+  storage: {
+    supabaseUrl: env.SUPABASE_URL,
+
+    supabaseServiceRoleKey: env.SUPABASE_SERVICE_ROLE_KEY,
+
+    bucket: env.SUPABASE_STORAGE_BUCKET,
+  },
 } as const;

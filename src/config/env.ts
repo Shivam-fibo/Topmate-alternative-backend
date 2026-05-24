@@ -40,6 +40,12 @@ const envSchema = z.object({
   ADMIN_EMAIL: z.email(),
 
   ADMIN_PASSWORD: z.string().min(8),
+
+  SUPABASE_URL: z.url(),
+
+  SUPABASE_SERVICE_ROLE_KEY: z.string().min(1),
+
+  SUPABASE_STORAGE_BUCKET: z.string().min(1),
 });
 
 const parsedEnv = envSchema.safeParse(process.env);

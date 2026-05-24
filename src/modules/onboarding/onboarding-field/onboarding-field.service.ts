@@ -1,7 +1,6 @@
 import { OnboardingFieldType } from "@prisma/client";
 import slugify from "slugify";
 
-
 import { AppError } from "../../../common/errors/app-error";
 
 import {
@@ -30,9 +29,8 @@ interface CreateOnboardingFieldInput {
   options?: string[];
 }
 
-const fieldTypesRequiringOptions = [
+const fieldTypesRequiringOptions: OnboardingFieldType[] = [
   OnboardingFieldType.SELECT,
-
   OnboardingFieldType.MULTI_SELECT,
 ];
 
