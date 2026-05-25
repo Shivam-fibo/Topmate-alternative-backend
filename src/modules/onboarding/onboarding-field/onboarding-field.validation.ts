@@ -20,3 +20,15 @@ export const createOnboardingFieldSchema = {
     options: z.array(z.string().trim().min(1)).optional(),
   }),
 };
+
+export const categoryIdParamsSchema = {
+  params: z.object({
+    categoryId: z.string().cuid(),
+  }),
+};
+
+export const categorySlugParamsSchema = {
+  params: z.object({
+    slug: z.string().trim().min(1).max(100),
+  }),
+};
