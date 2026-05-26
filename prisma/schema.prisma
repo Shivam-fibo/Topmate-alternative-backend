@@ -50,6 +50,16 @@ enum OnboardingSubmissionStatus {
   REJECTED
 }
 
+enum MentorProfileStatus {
+  PUBLIC
+  PRIVATE
+  SUSPENDED
+}
+
+
+
+// -----------------------------------------------------MODELS--------------------------------------------------
+
 model User {
   id String @id @default(cuid())
 
@@ -166,23 +176,43 @@ model MentorProfile {
 
   userId String @unique
 
-  onboardingStatus MentorOnboardingStatus @default(NOT_STARTED)
+  slug String @unique
 
-  approvalStatus MentorApprovalStatus @default(PENDING)
+  headline String?
 
-  schedulingConnectionStatus SchedulingConnectionStatus @default(NOT_CONNECTED)
+  bio String?
+
+  profileImageUrl String?
+
+  expertiseTags Json?
+
+  socialLinks Json?
+
+  status MentorProfileStatus @default(PRIVATE)
+
+  isVerified Boolean @default(false)
+
+  suspendedReason String?
+
+  onboardingStatus MentorOnboardingStatus
+
+  approvalStatus MentorApprovalStatus
+
+  schedulingConnectionStatus SchedulingConnectionStatus
 
   rejectionReason String?
 
   approvedAt DateTime?
 
   createdAt DateTime @default(now())
+
   updatedAt DateTime @updatedAt
 
   user User @relation("UserMentorProfile", fields: [userId], references: [id], onDelete: Cascade)
 
-  @@index([approvalStatus])
-  @@index([onboardingStatus])
+  @@index([slug])
+  @@index([status])
+  @@index([isVerified])
 }
 
 // onboarding categories for mentors

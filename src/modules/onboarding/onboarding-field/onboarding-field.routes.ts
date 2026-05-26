@@ -1,7 +1,6 @@
 import { RoleType } from "@prisma/client";
 import { Router } from "express";
 
-
 import { requireRoles } from "../../../middlewares/role.middleware";
 import { validateRequest } from "../../../middlewares/validation.middleware";
 import { asyncHandler } from "../../../utils/async-handler";

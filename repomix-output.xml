@@ -58,13 +58,20 @@ src/config/env.ts
 src/config/index.ts
 src/config/security.ts
 src/database/prisma.ts
+src/database/seed.ts
+src/database/seed/admin.seed.ts
+src/database/seed/role.seed.ts
+src/database/transaction.ts
 src/logger/index.ts
 src/logger/pino.ts
+src/middlewares/auth.middleware.ts
 src/middlewares/error.middleware.ts
 src/middlewares/not-found.middleware.ts
 src/middlewares/rate-limit.middleware.ts
 src/middlewares/request-id.middleware.ts
 src/middlewares/request-logger.middleware.ts
+src/middlewares/role.middleware.ts
+src/middlewares/upload.middleware.ts
 src/middlewares/validation.middleware.ts
 src/modules/admin/admin.controller.ts
 src/modules/admin/admin.repository.ts
@@ -73,14 +80,39 @@ src/modules/admin/admin.service.ts
 src/modules/admin/admin.types.ts
 src/modules/admin/admin.validation.ts
 src/modules/admin/index.ts
+src/modules/auth/auth.constants.ts
 src/modules/auth/auth.controller.ts
 src/modules/auth/auth.repository.ts
 src/modules/auth/auth.routes.ts
 src/modules/auth/auth.service.ts
 src/modules/auth/auth.types.ts
+src/modules/auth/auth.utils.ts
 src/modules/auth/auth.validation.ts
 src/modules/auth/index.ts
+src/modules/auth/services/email-verification.service.ts
+src/modules/auth/services/verify-email.service.ts
+src/modules/auth/templates/email-verification.template.ts
 src/modules/index.ts
+src/modules/onboarding/onboarding-category/onboarding-category.controller.ts
+src/modules/onboarding/onboarding-category/onboarding-category.public.routes.ts
+src/modules/onboarding/onboarding-category/onboarding-category.repository.ts
+src/modules/onboarding/onboarding-category/onboarding-category.routes.ts
+src/modules/onboarding/onboarding-category/onboarding-category.service.ts
+src/modules/onboarding/onboarding-category/onboarding-category.validation.ts
+src/modules/onboarding/onboarding-field/onboarding-field.controller.ts
+src/modules/onboarding/onboarding-field/onboarding-field.public.routes.ts
+src/modules/onboarding/onboarding-field/onboarding-field.repository.ts
+src/modules/onboarding/onboarding-field/onboarding-field.routes.ts
+src/modules/onboarding/onboarding-field/onboarding-field.service.ts
+src/modules/onboarding/onboarding-field/onboarding-field.validation.ts
+src/modules/onboarding/onboarding-submission/onboarding-submission.controller.ts
+src/modules/onboarding/onboarding-submission/onboarding-submission.repository.ts
+src/modules/onboarding/onboarding-submission/onboarding-submission.routes.ts
+src/modules/onboarding/onboarding-submission/onboarding-submission.service.ts
+src/modules/onboarding/onboarding-submission/onboarding-submission.validation.ts
+src/modules/types.ts
+src/modules/upload/upload.controller.ts
+src/modules/upload/upload.routes.ts
 src/modules/user/index.ts
 src/modules/user/user.controller.ts
 src/modules/user/user.repository.ts
@@ -91,9 +123,17 @@ src/modules/user/user.validation.ts
 src/routes/health.route.ts
 src/routes/index.ts
 src/server.ts
+src/shared/providers/email/brevo.provider.ts
+src/shared/providers/email/email.types.ts
+src/shared/providers/email/index.ts
+src/storage/providers/supabase.provider.ts
+src/storage/storage.interface.ts
+src/storage/storage.service.ts
+src/storage/storage.types.ts
 src/types/express.d.ts
 src/utils/api-response.ts
 src/utils/async-handler.ts
+src/utils/slug.ts
 src/validators/request-validator.ts
 test.txt
 tsconfig.json
@@ -102,55 +142,12 @@ tsconfig.json
 <files>
 This section contains the contents of the repository's files.
 
+<file path="src/utils/slug.ts">
+
+</file>
+
 <file path=".husky/pre-commit">
 npx lint-staged
-</file>
-
-<file path="src/bootstrap/database.ts">
-import { connectPrisma } from "../database/prisma";
-import { logger } from "../logger";
-
-export const initializeDatabase =
-  async (): Promise<void> => {
-    try {
-      logger.info(
-        "Initializing database bootstrap",
-      );
-
-      await connectPrisma();
-
-      logger.info(
-        "Database bootstrap completed successfully",
-      );
-    } catch (error) {
-      logger.fatal(
-        { error },
-        "Database bootstrap failed",
-      );
-
-      process.exit(1);
-    }
-  };
-</file>
-
-<file path="test.txt">
-
-</file>
-
-<file path=".env.example">
-PORT=
-
-NODE_ENV=
-
-DATABASE_URL=
-
-DIRECT_URL=
-
-CLIENT_URL=
-
-JWT_ACCESS_SECRET=
-
-JWT_REFRESH_SECRET=
 </file>
 
 <file path=".prettierignore">
@@ -170,6 +167,1318 @@ coverage
 }
 </file>
 
+<file path="src/bootstrap/database.ts">
+import { connectPrisma } from "../database/prisma";
+import { logger } from "../logger";
+
+export const initializeDatabase = async (): Promise<void> => {
+  try {
+    logger.info("Initializing database bootstrap");
+
+    await connectPrisma();
+
+    logger.info("Database bootstrap completed successfully");
+  } catch (error) {
+    logger.fatal({ error }, "Database bootstrap failed");
+
+    process.exit(1);
+  }
+};
+</file>
+
+<file path="src/database/seed.ts">
+import { prisma } from "./prisma";
+import { seedRoles } from "./seed/role.seed";
+
+const runSeeds = async (): Promise<void> => {
+  try {
+    console.log("Starting database seeds");
+
+    await seedRoles();
+
+    console.log("Database seeds completed successfully");
+  } catch (error) {
+    console.error("Database seeds failed", error);
+
+    process.exit(1);
+  } finally {
+    await prisma.$disconnect();
+  }
+};
+
+void runSeeds();
+</file>
+
+<file path="src/database/seed/admin.seed.ts">
+import { RoleType } from "@prisma/client";
+
+import { config } from "../../config";
+import { prisma } from "../../database/prisma";
+import { logger } from "../../logger";
+import { hashPassword } from "../../modules/auth/auth.utils";
+
+export const seedAdmin = async (): Promise<void> => {
+  const existingAdmin = await prisma.user.findUnique({
+    where: {
+      email: config.admin.email,
+    },
+
+    include: {
+      roles: {
+        include: {
+          role: true,
+        },
+      },
+    },
+  });
+
+  if (existingAdmin) {
+    logger.info(
+      {
+        email: existingAdmin.email,
+      },
+      "Admin already exists, skipping admin seed",
+    );
+
+    return;
+  }
+
+  const passwordHash = await hashPassword(config.admin.password);
+
+  const userRole = await prisma.role.findUnique({
+    where: {
+      name: RoleType.USER,
+    },
+  });
+
+  const adminRole = await prisma.role.findUnique({
+    where: {
+      name: RoleType.ADMIN,
+    },
+  });
+
+  if (!userRole || !adminRole) {
+    throw new Error("Required roles not found");
+  }
+
+  const adminUser = await prisma.user.create({
+    data: {
+      email: config.admin.email,
+
+      passwordHash,
+
+      isEmailVerified: true,
+
+      roles: {
+        create: [
+          {
+            roleId: userRole.id,
+          },
+
+          {
+            roleId: adminRole.id,
+          },
+        ],
+      },
+    },
+  });
+
+  logger.info(
+    {
+      userId: adminUser.id,
+
+      email: adminUser.email,
+    },
+    "Admin seeded successfully",
+  );
+};
+</file>
+
+<file path="src/database/transaction.ts">
+import type { Prisma } from "@prisma/client";
+
+import { prisma } from "./prisma";
+
+export const runTransaction = async <T>(
+  callback: (tx: Prisma.TransactionClient) => Promise<T>,
+): Promise<T> => {
+  return prisma.$transaction((tx) => {
+    return callback(tx);
+  });
+};
+</file>
+
+<file path="src/middlewares/auth.middleware.ts">
+import type { NextFunction, Request, Response } from "express";
+
+import { AppError } from "../common/errors/app-error";
+import { findSessionById } from "../modules/auth/auth.repository";
+import { verifyAccessToken } from "../modules/auth/auth.utils";
+
+const extractBearerToken = (authorizationHeader?: string): string => {
+  if (!authorizationHeader) {
+    throw new AppError(
+      "Authorization token missing",
+      401,
+      "AUTH_TOKEN_MISSING",
+    );
+  }
+
+  const [scheme, token] = authorizationHeader.split(" ");
+
+  if (scheme !== "Bearer" || !token) {
+    throw new AppError(
+      "Invalid authorization format",
+      401,
+      "INVALID_AUTH_FORMAT",
+    );
+  }
+
+  return token;
+};
+
+export const authMiddleware = async (
+  req: Request,
+  _res: Response,
+  next: NextFunction,
+): Promise<void> => {
+  try {
+    const token = extractBearerToken(req.headers.authorization);
+
+    const payload = verifyAccessToken(token);
+
+    const session = await findSessionById(payload.sessionId);
+
+    if (!session) {
+      throw new AppError("Invalid session", 401, "INVALID_SESSION");
+    }
+
+    if (session.revokedAt) {
+      throw new AppError("Session revoked", 401, "SESSION_REVOKED");
+    }
+
+    if (session.expiresAt <= new Date()) {
+      throw new AppError("Session expired", 401, "SESSION_EXPIRED");
+    }
+
+    if (session.tokenVersion !== payload.tokenVersion) {
+      throw new AppError("Invalid token version", 401, "INVALID_TOKEN_VERSION");
+    }
+
+    req.user = {
+      userId: session.user.id,
+
+      sessionId: session.id,
+
+      tokenVersion: session.tokenVersion,
+
+      roles: session.user.roles.map((userRole) => userRole.role.name),
+    };
+
+    next();
+  } catch (error) {
+    next(error);
+  }
+};
+</file>
+
+<file path="src/middlewares/upload.middleware.ts">
+import multer from "multer";
+
+import { AppError } from "../common/errors/app-error";
+
+const allowedMimeTypes = ["image/jpeg", "image/png", "application/pdf"];
+
+export const uploadMiddleware = multer({
+  storage: multer.memoryStorage(),
+
+  limits: {
+    fileSize: 5 * 1024 * 1024,
+  },
+
+  fileFilter: (_req, file, callback) => {
+    if (!allowedMimeTypes.includes(file.mimetype)) {
+      callback(new AppError("Unsupported file type", 400, "INVALID_FILE_TYPE"));
+
+      return;
+    }
+
+    callback(null, true);
+  },
+});
+</file>
+
+<file path="src/modules/admin/admin.types.ts">
+
+</file>
+
+<file path="src/modules/admin/admin.validation.ts">
+
+</file>
+
+<file path="src/modules/admin/index.ts">
+
+</file>
+
+<file path="src/modules/auth/index.ts">
+
+</file>
+
+<file path="src/modules/auth/services/email-verification.service.ts">
+import { addMinutes } from "date-fns";
+
+import { emailProvider } from "../../../shared/providers/email";
+import { EMAIL_VERIFICATION_EXPIRES_IN_MINUTES } from "../auth.constants";
+import { createEmailVerificationToken } from "../auth.repository";
+import { generateOtp, hashToken } from "../auth.utils";
+import { generateEmailVerificationTemplate } from "../templates/email-verification.template";
+
+interface SendVerificationEmailParams {
+  userId: string;
+
+  email: string;
+}
+
+export const sendVerificationEmail = async (
+  params: SendVerificationEmailParams,
+): Promise<void> => {
+  const otp = generateOtp();
+
+  const tokenHash = hashToken(otp);
+
+  const expiresAt = addMinutes(
+    new Date(),
+    EMAIL_VERIFICATION_EXPIRES_IN_MINUTES,
+  );
+
+  await createEmailVerificationToken({
+    userId: params.userId,
+
+    tokenHash,
+
+    expiresAt,
+  });
+
+  const html = generateEmailVerificationTemplate({
+    otp,
+  });
+
+  await emailProvider.sendEmail({
+    to: params.email,
+
+    subject: "Verify your email",
+
+    html,
+  });
+};
+</file>
+
+<file path="src/modules/auth/services/verify-email.service.ts">
+import { AppError } from "../../../common/errors/app-error";
+import { MAX_EMAIL_VERIFICATION_ATTEMPTS } from "../auth.constants";
+import {
+  findEmailVerificationToken,
+  incrementEmailVerificationAttempts,
+  markEmailVerificationTokenUsed,
+  markUserEmailVerified,
+} from "../auth.repository";
+import { hashToken } from "../auth.utils";
+
+interface VerifyEmailOtpInput {
+  otp: string;
+}
+
+export const verifyEmailOtp = async (
+  input: VerifyEmailOtpInput,
+): Promise<void> => {
+  const tokenHash = hashToken(input.otp);
+
+  const verificationToken = await findEmailVerificationToken(tokenHash);
+
+  if (!verificationToken) {
+    throw new AppError("Invalid OTP", 400, "INVALID_OTP");
+  }
+
+  if (verificationToken.attemptCount >= MAX_EMAIL_VERIFICATION_ATTEMPTS) {
+    throw new AppError(
+      "Maximum verification attempts exceeded",
+      429,
+      "MAX_OTP_ATTEMPTS_EXCEEDED",
+    );
+  }
+
+  await incrementEmailVerificationAttempts(verificationToken.id);
+
+  if (verificationToken.expiresAt < new Date()) {
+    throw new AppError("OTP expired", 400, "OTP_EXPIRED");
+  }
+
+  if (verificationToken.user.isEmailVerified) {
+    return;
+  }
+
+  await Promise.all([
+    markUserEmailVerified(verificationToken.userId),
+
+    markEmailVerificationTokenUsed(verificationToken.id),
+  ]);
+};
+</file>
+
+<file path="src/modules/auth/templates/email-verification.template.ts">
+interface EmailVerificationTemplateParams {
+  otp: string;
+}
+
+export const generateEmailVerificationTemplate = (
+  params: EmailVerificationTemplateParams,
+): string => {
+  return `
+    <html>
+      <body>
+        <h2>Email Verification</h2>
+
+        <p>
+          Use the OTP below to verify
+          your email address.
+        </p>
+
+        <h1>
+          ${params.otp}
+        </h1>
+
+        <p>
+          This OTP will expire in
+          15 minutes.
+        </p>
+
+        <p>
+          If you did not create this account,
+          please ignore this email.
+        </p>
+      </body>
+    </html>
+  `;
+};
+</file>
+
+<file path="src/modules/onboarding/onboarding-category/onboarding-category.controller.ts">
+import type { Request, Response } from "express";
+
+import { sendSuccessResponse } from "../../../utils/api-response";
+
+import {
+  createOnboardingCategoryService,
+  getActiveOnboardingCategoriesService,
+  getAllOnboardingCategoriesService,
+} from "./onboarding-category.service";
+
+export const createOnboardingCategoryController = async (
+  req: Request,
+  res: Response,
+): Promise<void> => {
+  const category = await createOnboardingCategoryService(req.body);
+
+  sendSuccessResponse(
+    res,
+    201,
+    "Onboarding category created successfully",
+    category,
+  );
+};
+
+export const getAllOnboardingCategoriesController = async (
+  _req: Request,
+  res: Response,
+): Promise<void> => {
+  const categories = await getAllOnboardingCategoriesService();
+
+  sendSuccessResponse(
+    res,
+    200,
+    "Onboarding categories fetched successfully",
+    categories,
+  );
+};
+
+export const getActiveOnboardingCategoriesController = async (
+  _req: Request,
+  res: Response,
+): Promise<void> => {
+  const categories = await getActiveOnboardingCategoriesService();
+
+  sendSuccessResponse(
+    res,
+    200,
+    "Active onboarding categories fetched successfully",
+    categories,
+  );
+};
+</file>
+
+<file path="src/modules/onboarding/onboarding-category/onboarding-category.public.routes.ts">
+import { Router } from "express";
+
+import { asyncHandler } from "../../../utils/async-handler";
+
+import { getActiveOnboardingCategoriesController } from "./onboarding-category.controller";
+
+const onboardingCategoryPublicRouter = Router();
+
+onboardingCategoryPublicRouter.get(
+  "/",
+
+  asyncHandler(getActiveOnboardingCategoriesController),
+);
+
+export { onboardingCategoryPublicRouter };
+</file>
+
+<file path="src/modules/onboarding/onboarding-category/onboarding-category.repository.ts">
+import { prisma } from "../../../database/prisma";
+
+interface CreateOnboardingCategoryParams {
+  name: string;
+
+  slug: string;
+
+  description?: string;
+}
+
+export const createOnboardingCategory = (
+  data: CreateOnboardingCategoryParams,
+) => {
+  return prisma.onboardingCategory.create({
+    data,
+  });
+};
+
+export const findOnboardingCategoryByName = (name: string) => {
+  return prisma.onboardingCategory.findFirst({
+    where: {
+      name: {
+        equals: name,
+
+        mode: "insensitive",
+      },
+    },
+  });
+};
+
+export const findOnboardingCategoryBySlug = (slug: string) => {
+  return prisma.onboardingCategory.findUnique({
+    where: {
+      slug,
+    },
+  });
+};
+
+export const getAllOnboardingCategories = () => {
+  return prisma.onboardingCategory.findMany({
+    orderBy: {
+      createdAt: "desc",
+    },
+  });
+};
+
+export const getActiveOnboardingCategories = () => {
+  return prisma.onboardingCategory.findMany({
+    where: {
+      isActive: true,
+    },
+
+    orderBy: {
+      createdAt: "desc",
+    },
+  });
+};
+</file>
+
+<file path="src/modules/onboarding/onboarding-category/onboarding-category.routes.ts">
+import { RoleType } from "@prisma/client";
+import { Router } from "express";
+
+import { requireRoles } from "../../../middlewares/role.middleware";
+import { validateRequest } from "../../../middlewares/validation.middleware";
+import { asyncHandler } from "../../../utils/async-handler";
+
+import {
+  createOnboardingCategoryController,
+  getAllOnboardingCategoriesController,
+} from "./onboarding-category.controller";
+import { createOnboardingCategorySchema } from "./onboarding-category.validation";
+
+const onboardingCategoryRouter = Router();
+
+onboardingCategoryRouter.post(
+  "/",
+
+  requireRoles([RoleType.ADMIN]),
+
+  validateRequest(createOnboardingCategorySchema),
+
+  asyncHandler(createOnboardingCategoryController),
+);
+
+onboardingCategoryRouter.get(
+  "/",
+
+  requireRoles([RoleType.ADMIN]),
+
+  asyncHandler(getAllOnboardingCategoriesController),
+);
+
+export { onboardingCategoryRouter };
+</file>
+
+<file path="src/modules/onboarding/onboarding-category/onboarding-category.service.ts">
+import slugify from "slugify";
+
+import { AppError } from "../../../common/errors/app-error";
+
+import {
+  createOnboardingCategory,
+  findOnboardingCategoryByName,
+  findOnboardingCategoryBySlug,
+  getActiveOnboardingCategories,
+  getAllOnboardingCategories,
+} from "./onboarding-category.repository";
+
+interface CreateOnboardingCategoryInput {
+  name: string;
+
+  description?: string;
+}
+
+export const createOnboardingCategoryService = async (
+  input: CreateOnboardingCategoryInput,
+) => {
+  const normalizedName = input.name.trim();
+
+  const existingCategory = await findOnboardingCategoryByName(normalizedName);
+
+  if (existingCategory) {
+    throw new AppError(
+      "Onboarding category already exists",
+      409,
+      "ONBOARDING_CATEGORY_ALREADY_EXISTS",
+    );
+  }
+
+  const generatedSlug = slugify(normalizedName, {
+    lower: true,
+
+    strict: true,
+
+    trim: true,
+  });
+
+  const existingSlug = await findOnboardingCategoryBySlug(generatedSlug);
+
+  if (existingSlug) {
+    throw new AppError(
+      "Generated slug already exists",
+      409,
+      "ONBOARDING_CATEGORY_SLUG_ALREADY_EXISTS",
+    );
+  }
+
+  return createOnboardingCategory({
+    name: normalizedName,
+
+    slug: generatedSlug,
+
+    description: input.description?.trim(),
+  });
+};
+
+export const getAllOnboardingCategoriesService = async () => {
+  return getAllOnboardingCategories();
+};
+
+export const getActiveOnboardingCategoriesService = async () => {
+  return getActiveOnboardingCategories();
+};
+</file>
+
+<file path="src/modules/onboarding/onboarding-category/onboarding-category.validation.ts">
+import { z } from "zod";
+
+export const createOnboardingCategorySchema = {
+  body: z.object({
+    name: z.string().trim().min(2).max(100),
+
+    description: z.string().trim().max(500).optional(),
+  }),
+};
+</file>
+
+<file path="src/modules/onboarding/onboarding-field/onboarding-field.public.routes.ts">
+import { Router } from "express";
+
+import { validateRequest } from "../../../middlewares/validation.middleware";
+import { asyncHandler } from "../../../utils/async-handler";
+
+import { getFieldsByCategorySlugController } from "./onboarding-field.controller";
+import { categorySlugParamsSchema } from "./onboarding-field.validation";
+
+const onboardingFieldPublicRouter = Router();
+
+onboardingFieldPublicRouter.get(
+  "/category/:slug",
+
+  validateRequest(categorySlugParamsSchema),
+
+  asyncHandler(getFieldsByCategorySlugController),
+);
+
+export { onboardingFieldPublicRouter };
+</file>
+
+<file path="src/modules/onboarding/onboarding-field/onboarding-field.routes.ts">
+import { RoleType } from "@prisma/client";
+import { Router } from "express";
+
+import { requireRoles } from "../../../middlewares/role.middleware";
+import { validateRequest } from "../../../middlewares/validation.middleware";
+import { asyncHandler } from "../../../utils/async-handler";
+
+import {
+  createOnboardingFieldController,
+  getFieldsByCategoryIdController,
+} from "./onboarding-field.controller";
+import {
+  categoryIdParamsSchema,
+  createOnboardingFieldSchema,
+} from "./onboarding-field.validation";
+
+const onboardingFieldRouter = Router();
+
+onboardingFieldRouter.post(
+  "/",
+
+  requireRoles([RoleType.ADMIN]),
+
+  validateRequest(createOnboardingFieldSchema),
+
+  asyncHandler(createOnboardingFieldController),
+);
+
+onboardingFieldRouter.get(
+  "/category/:categoryId",
+
+  requireRoles([RoleType.ADMIN]),
+
+  validateRequest(categoryIdParamsSchema),
+
+  asyncHandler(getFieldsByCategoryIdController),
+);
+
+export { onboardingFieldRouter };
+</file>
+
+<file path="src/modules/onboarding/onboarding-submission/onboarding-submission.controller.ts">
+import type { Request, Response } from "express";
+
+import { AppError } from "../../../common/errors/app-error";
+import { sendSuccessResponse } from "../../../utils/api-response";
+
+import {
+  createOnboardingSubmissionService,
+  reviewSubmissionService,
+} from "./onboarding-submission.service";
+
+export const createOnboardingSubmissionController = async (
+  req: Request,
+  res: Response,
+): Promise<void> => {
+  if (!req.user) {
+    throw new AppError("Authentication required", 401, "UNAUTHENTICATED");
+  }
+
+  const submission = await createOnboardingSubmissionService({
+    userId: req.user.userId,
+
+    ...req.body,
+  });
+
+  sendSuccessResponse(
+    res,
+    201,
+    "Onboarding submitted successfully",
+    submission,
+  );
+};
+
+export const reviewSubmissionController = async (
+  req: Request,
+  res: Response,
+): Promise<void> => {
+  const submission = await reviewSubmissionService({
+    submissionId: req.params.submissionId,
+
+    ...req.body,
+  });
+
+  sendSuccessResponse(res, 200, "Submission reviewed successfully", submission);
+};
+</file>
+
+<file path="src/modules/onboarding/onboarding-submission/onboarding-submission.repository.ts">
+import type { Prisma } from "@prisma/client";
+
+import { prisma } from "../../../database/prisma";
+
+interface CreateSubmissionInput {
+  userId: string;
+
+  categoryId: string;
+
+  answers: {
+    fieldId: string;
+
+    value: Prisma.InputJsonValue;
+  }[];
+}
+
+export const findCategoryWithFields = (categoryId: string) => {
+  return prisma.onboardingCategory.findUnique({
+    where: {
+      id: categoryId,
+    },
+
+    include: {
+      fields: {
+        where: {
+          isActive: true,
+        },
+      },
+    },
+  });
+};
+
+export const createSubmission = async (input: CreateSubmissionInput) => {
+  return prisma.onboardingSubmission.create({
+    data: {
+      userId: input.userId,
+
+      categoryId: input.categoryId,
+
+      answers: {
+        create: input.answers,
+      },
+    },
+
+    include: {
+      answers: true,
+    },
+  });
+};
+
+export const findPendingSubmissionByUserId = (userId: string) => {
+  return prisma.onboardingSubmission.findFirst({
+    where: {
+      userId,
+
+      status: "PENDING",
+    },
+  });
+};
+
+export const findSubmissionById = (submissionId: string) => {
+  return prisma.onboardingSubmission.findUnique({
+    where: {
+      id: submissionId,
+    },
+  });
+};
+
+export const updateSubmissionReview = (
+  submissionId: string,
+
+  status: "APPROVED" | "REJECTED",
+
+  reviewNotes?: string,
+) => {
+  return prisma.onboardingSubmission.update({
+    where: {
+      id: submissionId,
+    },
+
+    data: {
+      status,
+
+      reviewNotes,
+
+      reviewedAt: new Date(),
+    },
+  });
+};
+
+export const addMentorRoleToUser = async (userId: string) => {
+  const mentorRole = await prisma.role.findUnique({
+    where: {
+      name: "MENTOR",
+    },
+  });
+
+  if (!mentorRole) {
+    throw new Error("MENTOR role not found");
+  }
+
+  const existingUserRole = await prisma.userRole.findFirst({
+    where: {
+      userId,
+
+      roleId: mentorRole.id,
+    },
+  });
+
+  if (existingUserRole) {
+    return;
+  }
+
+  return prisma.userRole.create({
+    data: {
+      userId,
+
+      roleId: mentorRole.id,
+    },
+  });
+};
+</file>
+
+<file path="src/modules/onboarding/onboarding-submission/onboarding-submission.routes.ts">
+import { RoleType } from "@prisma/client";
+import { Router } from "express";
+
+import { requireRoles } from "../../../middlewares/role.middleware";
+import { validateRequest } from "../../../middlewares/validation.middleware";
+import { asyncHandler } from "../../../utils/async-handler";
+
+import {
+  createOnboardingSubmissionController,
+  reviewSubmissionController,
+} from "./onboarding-submission.controller";
+import {
+  createOnboardingSubmissionSchema,
+  reviewSubmissionSchema,
+} from "./onboarding-submission.validation";
+
+const onboardingSubmissionRouter = Router();
+
+onboardingSubmissionRouter.post(
+  "/",
+
+  validateRequest(createOnboardingSubmissionSchema),
+
+  asyncHandler(createOnboardingSubmissionController),
+);
+
+onboardingSubmissionRouter.patch(
+  "/:submissionId/review",
+
+  requireRoles([RoleType.ADMIN]),
+
+  validateRequest(reviewSubmissionSchema),
+
+  asyncHandler(reviewSubmissionController),
+);
+
+export { onboardingSubmissionRouter };
+</file>
+
+<file path="src/modules/onboarding/onboarding-submission/onboarding-submission.service.ts">
+import { OnboardingFieldType } from "@prisma/client";
+import type { Prisma } from "@prisma/client";
+
+import { AppError } from "../../../common/errors/app-error";
+
+import {
+  addMentorRoleToUser,
+  findSubmissionById,
+  updateSubmissionReview,
+} from "./onboarding-submission.repository";
+import {
+  createSubmission,
+  findCategoryWithFields,
+  findPendingSubmissionByUserId,
+} from "./onboarding-submission.repository";
+
+interface SubmissionAnswerInput {
+  fieldId: string;
+
+  value: Prisma.InputJsonValue;
+}
+
+interface CreateSubmissionInput {
+  userId: string;
+
+  categoryId: string;
+
+  answers: SubmissionAnswerInput[];
+}
+
+interface ReviewSubmissionInput {
+  submissionId: string;
+
+  status: "APPROVED" | "REJECTED";
+
+  reviewNotes?: string;
+}
+const validateFieldValue = (
+  fieldType: OnboardingFieldType,
+
+  value: unknown,
+) => {
+  switch (fieldType) {
+    case OnboardingFieldType.TEXT:
+    case OnboardingFieldType.TEXTAREA:
+      return typeof value === "string";
+
+    case OnboardingFieldType.NUMBER:
+      return typeof value === "number";
+
+    case OnboardingFieldType.SELECT:
+      return typeof value === "string";
+
+    case OnboardingFieldType.MULTI_SELECT:
+      return Array.isArray(value);
+
+    case OnboardingFieldType.FILE:
+      return typeof value === "object" && value !== null;
+
+    case OnboardingFieldType.DATE:
+      return typeof value === "string";
+
+    default:
+      return false;
+  }
+};
+
+export const createOnboardingSubmissionService = async (
+  input: CreateSubmissionInput,
+) => {
+  const existingPendingSubmission = await findPendingSubmissionByUserId(
+    input.userId,
+  );
+
+  if (existingPendingSubmission) {
+    throw new AppError(
+      "Pending onboarding submission already exists",
+      409,
+      "PENDING_SUBMISSION_ALREADY_EXISTS",
+    );
+  }
+
+  const category = await findCategoryWithFields(input.categoryId);
+
+  if (!category) {
+    throw new AppError(
+      "Onboarding category not found",
+      404,
+      "ONBOARDING_CATEGORY_NOT_FOUND",
+    );
+  }
+
+  const fieldMap = new Map(category.fields.map((field) => [field.id, field]));
+
+  for (const field of category.fields) {
+    if (!field.isRequired) {
+      continue;
+    }
+
+    const submittedAnswer = input.answers.find(
+      (answer) => answer.fieldId === field.id,
+    );
+
+    if (!submittedAnswer) {
+      throw new AppError(
+        `${field.label} is required`,
+        400,
+        "REQUIRED_FIELD_MISSING",
+      );
+    }
+  }
+
+  for (const answer of input.answers) {
+    const field = fieldMap.get(answer.fieldId);
+
+    if (!field) {
+      throw new AppError("Invalid field submitted", 400, "INVALID_FIELD");
+    }
+
+    const isValid = validateFieldValue(field.fieldType, answer.value);
+
+    if (!isValid) {
+      throw new AppError(
+        `Invalid value for ${field.label}`,
+        400,
+        "INVALID_FIELD_VALUE",
+      );
+    }
+  }
+
+  return createSubmission({
+    userId: input.userId,
+
+    categoryId: input.categoryId,
+
+    answers: input.answers,
+  });
+};
+
+export const reviewSubmissionService = async (input: ReviewSubmissionInput) => {
+  const submission = await findSubmissionById(input.submissionId);
+
+  if (!submission) {
+    throw new AppError("Submission not found", 404, "SUBMISSION_NOT_FOUND");
+  }
+
+  if (submission.status !== "PENDING") {
+    throw new AppError(
+      "Submission already reviewed",
+      400,
+      "SUBMISSION_ALREADY_REVIEWED",
+    );
+  }
+
+  const updatedSubmission = await updateSubmissionReview(
+    input.submissionId,
+
+    input.status,
+
+    input.reviewNotes,
+  );
+
+  if (input.status === "APPROVED") {
+    await addMentorRoleToUser(submission.userId);
+  }
+
+  return updatedSubmission;
+};
+</file>
+
+<file path="src/modules/onboarding/onboarding-submission/onboarding-submission.validation.ts">
+import { z } from "zod";
+
+export const createOnboardingSubmissionSchema = {
+  body: z.object({
+    categoryId: z.string().cuid(),
+
+    answers: z
+      .array(
+        z.object({
+          fieldId: z.string().cuid(),
+
+          value: z.unknown(),
+        }),
+      )
+      .min(1),
+  }),
+};
+
+export const reviewSubmissionSchema = {
+  body: z.object({
+    status: z.enum(["APPROVED", "REJECTED"]),
+
+    reviewNotes: z.string().trim().max(1000).optional(),
+  }),
+};
+</file>
+
+<file path="src/modules/types.ts">
+import type { Router } from "express";
+
+export interface ModuleRouteDefinition {
+  path: string;
+
+  router: Router;
+
+  isPrivate?: boolean;
+}
+</file>
+
+<file path="src/modules/upload/upload.controller.ts">
+import type { Request, Response } from "express";
+
+import { AppError } from "../../common/errors/app-error";
+import { storageService } from "../../storage/storage.service";
+import { sendSuccessResponse } from "../../utils/api-response";
+
+export const uploadFileController = async (
+  req: Request,
+  res: Response,
+): Promise<void> => {
+  if (!req.file) {
+    throw new AppError("File is required", 400, "FILE_REQUIRED");
+  }
+
+  const uploadedFile = await storageService.uploadFile({
+    file: req.file.buffer,
+
+    fileName: req.file.originalname,
+
+    contentType: req.file.mimetype,
+
+    folder: "mentor-onboarding",
+  });
+
+  sendSuccessResponse(res, 201, "File uploaded successfully", uploadedFile);
+};
+</file>
+
+<file path="src/modules/user/index.ts">
+
+</file>
+
+<file path="src/modules/user/user.controller.ts">
+
+</file>
+
+<file path="src/modules/user/user.repository.ts">
+
+</file>
+
+<file path="src/modules/user/user.routes.ts">
+
+</file>
+
+<file path="src/modules/user/user.service.ts">
+
+</file>
+
+<file path="src/modules/user/user.types.ts">
+
+</file>
+
+<file path="src/modules/user/user.validation.ts">
+
+</file>
+
+<file path="src/shared/providers/email/email.types.ts">
+export interface SendEmailOptions {
+  to: string;
+
+  subject: string;
+
+  html: string;
+}
+
+export interface EmailProvider {
+  sendEmail(options: SendEmailOptions): Promise<void>;
+}
+</file>
+
+<file path="src/shared/providers/email/index.ts">
+import { brevoProvider } from "./brevo.provider";
+
+export const emailProvider = brevoProvider;
+</file>
+
+<file path="src/storage/providers/supabase.provider.ts">
+import { randomUUID } from "crypto";
+
+import { createClient } from "@supabase/supabase-js";
+import ws from "ws";
+
+import { config } from "../../config";
+import type { StorageProvider } from "../storage.interface";
+import type { UploadFileInput, UploadedFileResult } from "../storage.types";
+
+export class SupabaseStorageProvider implements StorageProvider {
+  private readonly client = createClient(
+    config.storage.supabaseUrl,
+
+    config.storage.supabaseServiceRoleKey,
+
+    {
+      realtime: {
+        transport: ws as unknown as typeof globalThis.WebSocket,
+      },
+    },
+  );
+
+  async uploadFile(input: UploadFileInput): Promise<UploadedFileResult> {
+    const uniqueFileName = `${randomUUID()}-${input.fileName}`;
+
+    const filePath = input.folder
+      ? `${input.folder}/${uniqueFileName}`
+      : uniqueFileName;
+
+    const { error } = await this.client.storage
+      .from(config.storage.bucket)
+      .upload(filePath, input.file, {
+        contentType: input.contentType,
+
+        upsert: false,
+      });
+
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    const { data: publicUrlData } = this.client.storage
+      .from(config.storage.bucket)
+      .getPublicUrl(filePath);
+
+    return {
+      key: filePath,
+
+      url: publicUrlData.publicUrl,
+    };
+  }
+
+  async deleteFile(key: string): Promise<void> {
+    const { error } = await this.client.storage
+      .from(config.storage.bucket)
+      .remove([key]);
+
+    if (error) {
+      throw new Error(error.message);
+    }
+  }
+}
+</file>
+
+<file path="src/storage/storage.interface.ts">
+import type { UploadFileInput, UploadedFileResult } from "./storage.types";
+
+export interface StorageProvider {
+  uploadFile(input: UploadFileInput): Promise<UploadedFileResult>;
+
+  deleteFile(key: string): Promise<void>;
+}
+</file>
+
+<file path="src/storage/storage.service.ts">
+import { SupabaseStorageProvider } from "./providers/supabase.provider";
+
+export const storageService = new SupabaseStorageProvider();
+</file>
+
+<file path="src/storage/storage.types.ts">
+export interface UploadFileInput {
+  file: Buffer;
+
+  fileName: string;
+
+  contentType: string;
+
+  folder?: string;
+}
+
+export interface UploadedFileResult {
+  key: string;
+
+  url: string;
+}
+</file>
+
+<file path="test.txt">
+
+</file>
+
 <file path="eslint.config.mjs">
 import tseslint from "typescript-eslint";
 import importPlugin from "eslint-plugin-import";
@@ -183,10 +1492,7 @@ export default [
    |--------------------------------------------------------------------------
    */
   {
-    ignores: [
-      "dist/**",
-      "node_modules/**",
-    ],
+    ignores: ["dist/**", "node_modules/**"],
   },
 
   ...tseslint.configs.recommended,
@@ -211,8 +1517,7 @@ export default [
        | Unused Imports
        |--------------------------------------------------------------------------
        */
-      "unused-imports/no-unused-imports":
-        "error",
+      "unused-imports/no-unused-imports": "error",
 
       /*
        |--------------------------------------------------------------------------
@@ -257,218 +1562,14 @@ export default [
        | TypeScript Rules
        |--------------------------------------------------------------------------
        */
-      "@typescript-eslint/consistent-type-imports":
-        "warn",
+      "@typescript-eslint/consistent-type-imports": "warn",
 
-      "@typescript-eslint/no-explicit-any":
-        "warn",
+      "@typescript-eslint/no-explicit-any": "warn",
     },
   },
 
   prettierConfig,
 ];
-</file>
-
-<file path="prisma/schema.prisma">
-generator client {
-  provider = "prisma-client-js"
-}
-
-datasource db {
-  provider = "postgresql"
-
-  url = env("DATABASE_URL")
-
-  directUrl = env("DIRECT_URL")
-}
-</file>
-
-<file path="src/modules/admin/admin.controller.ts">
-
-</file>
-
-<file path="src/modules/admin/admin.repository.ts">
-
-</file>
-
-<file path="src/modules/admin/admin.routes.ts">
-
-</file>
-
-<file path="src/modules/admin/admin.service.ts">
-
-</file>
-
-<file path="src/modules/admin/admin.types.ts">
-
-</file>
-
-<file path="src/modules/admin/admin.validation.ts">
-
-</file>
-
-<file path="src/modules/admin/index.ts">
-
-</file>
-
-<file path="src/modules/auth/auth.controller.ts">
-
-</file>
-
-<file path="src/modules/auth/auth.repository.ts">
-
-</file>
-
-<file path="src/modules/auth/auth.routes.ts">
-
-</file>
-
-<file path="src/modules/auth/auth.service.ts">
-
-</file>
-
-<file path="src/modules/auth/auth.types.ts">
-
-</file>
-
-<file path="src/modules/auth/auth.validation.ts">
-
-</file>
-
-<file path="src/modules/auth/index.ts">
-
-</file>
-
-<file path="src/modules/user/index.ts">
-
-</file>
-
-<file path="src/modules/user/user.controller.ts">
-
-</file>
-
-<file path="src/modules/user/user.repository.ts">
-
-</file>
-
-<file path="src/modules/user/user.routes.ts">
-
-</file>
-
-<file path="src/modules/user/user.service.ts">
-
-</file>
-
-<file path="src/modules/user/user.types.ts">
-
-</file>
-
-<file path="src/modules/user/user.validation.ts">
-
-</file>
-
-<file path="src/routes/index.ts">
-import { Router } from "express";
-
-import { moduleRoutes } from "../modules";
-
-import healthRouter from "./health.route";
-
-interface RouteDefinition {
-  path: string;
-  router: Router;
-}
-
-const routeDefinitions: RouteDefinition[] = [
-  {
-    path: "/health",
-    router: healthRouter,
-  },
-  ...moduleRoutes,
-];
-
-export const routes = Router();
-
-routeDefinitions.forEach(({ path, router }) => {
-  routes.use(path, router);
-});
-</file>
-
-<file path=".gitignore">
-node_modules
-dist
-.env
-/src/generated/prisma
-repomix-output.xml
-</file>
-
-<file path="package.json">
-{
-  "name": "backend-foundation",
-  "version": "1.0.0",
-  "main": "index.js",
-  "scripts": {
-    "dev": "tsx watch src/server.ts",
-    "build": "tsc",
-    "start": "node dist/server.js",
-    "lint": "eslint .",
-    "lint:fix": "eslint . --fix",
-    "format": "prettier . --write",
-    "format:check": "prettier . --check",
-    "prepare": "husky",
-    "prisma:generate": "prisma generate",
-    "prisma:migrate": "prisma migrate dev",
-    "prisma:deploy": "prisma migrate deploy",
-    "prisma:studio": "prisma studio",
-    "prisma:reset": "prisma migrate reset",
-    "prisma:status": "prisma migrate status"
-  },
-  "lint-staged": {
-    "*.{js,ts,json}": [
-      "prettier --write",
-      "eslint --fix"
-    ]
-  },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "description": "",
-  "dependencies": {
-    "@prisma/client": "^6.16.2",
-    "compression": "^1.8.1",
-    "cookie-parser": "^1.4.7",
-    "cors": "^2.8.6",
-    "dotenv": "^17.4.2",
-    "express": "^5.2.1",
-    "express-rate-limit": "^8.5.1",
-    "helmet": "^8.1.0",
-    "hpp": "^0.2.3",
-    "pino": "^10.3.1",
-    "pino-http": "^11.0.0",
-    "prisma": "^6.16.2",
-    "zod": "^4.4.3"
-  },
-  "devDependencies": {
-    "@types/compression": "^1.8.1",
-    "@types/cookie-parser": "^1.4.10",
-    "@types/cors": "^2.8.19",
-    "@types/express": "^5.0.6",
-    "@types/hpp": "^0.2.7",
-    "@types/node": "^25.6.2",
-    "eslint": "^9.39.4",
-    "eslint-config-prettier": "^10.1.8",
-    "eslint-plugin-import": "^2.32.0",
-    "eslint-plugin-unused-imports": "^4.4.1",
-    "husky": "^9.1.7",
-    "lint-staged": "^16.4.0",
-    "pino-pretty": "^13.1.3",
-    "prettier": "^3.8.3",
-    "prettier-plugin-packagejson": "^3.0.2",
-    "tsx": "^4.21.0",
-    "typescript": "^6.0.3",
-    "typescript-eslint": "^8.59.3"
-  }
-}
 </file>
 
 <file path="src/bootstrap/http-server.ts">
@@ -696,6 +1797,35 @@ export const helmetConfig = helmet({
 });
 </file>
 
+<file path="src/database/seed/role.seed.ts">
+import { RoleType } from "@prisma/client";
+
+import { prisma } from "../../database/prisma";
+
+import { seedAdmin } from "./admin.seed";
+
+const roles: RoleType[] = [RoleType.USER, RoleType.MENTOR, RoleType.ADMIN];
+
+export const seedRoles = async (): Promise<void> => {
+  await Promise.all(
+    roles.map((roleName) =>
+      prisma.role.upsert({
+        where: {
+          name: roleName,
+        },
+
+        update: {},
+
+        create: {
+          name: roleName,
+        },
+      }),
+    ),
+  );
+  await seedAdmin();
+};
+</file>
+
 <file path="src/logger/index.ts">
 import pino from "pino";
 
@@ -764,59 +1894,440 @@ export const requestIdMiddleware = (
 };
 </file>
 
+<file path="src/middlewares/role.middleware.ts">
+import type { RoleType } from "@prisma/client";
+import type { NextFunction, Request, Response } from "express";
+
+import { AppError } from "../common/errors/app-error";
+
+export const requireRoles = (allowedRoles: RoleType[]) => {
+  return (req: Request, _res: Response, next: NextFunction): void => {
+    if (!req.user) {
+      next(new AppError("Authentication required", 401, "UNAUTHENTICATED"));
+
+      return;
+    }
+
+    const hasRequiredRole = allowedRoles.some((role) =>
+      req.user?.roles.includes(role),
+    );
+
+    if (!hasRequiredRole) {
+      next(new AppError("Insufficient permissions", 403, "FORBIDDEN"));
+
+      return;
+    }
+
+    next();
+  };
+};
+</file>
+
 <file path="src/middlewares/validation.middleware.ts">
 export { validateRequest } from "../validators/request-validator";
 
 export type { RequestValidationSchema } from "../validators/request-validator";
 </file>
 
-<file path="src/server.ts">
-import app from "./app";
+<file path="src/modules/admin/admin.controller.ts">
+import type { Request, Response } from "express";
 
-import { initializeDatabase } from "./bootstrap/database";
-import { startHttpServer } from "./bootstrap/http-server";
-import { registerProcessHandlers } from "./bootstrap/process-handlers";
+import { sendSuccessResponse } from "../../utils/api-response";
 
-import { logger } from "./logger";
+import { getAdminProfile } from "./admin.service";
 
-const bootstrapServer = async (): Promise<void> => {
-  try {
-    logger.info(
-      "Starting application bootstrap",
-    );
+export const getAdminMeController = async (
+  req: Request,
+  res: Response,
+): Promise<void> => {
+  const admin = await getAdminProfile(req.user!.userId);
 
-    await initializeDatabase();
-
-    const server = startHttpServer(app);
-
-    registerProcessHandlers(server);
-
-    logger.info(
-      "Application bootstrap completed successfully",
-    );
-  } catch (error) {
-    logger.fatal(
-      { error },
-      "Application bootstrap failed",
-    );
-
-    process.exit(1);
-  }
+  sendSuccessResponse(res, 200, "Admin profile fetched successfully", admin);
 };
-
-void bootstrapServer();
 </file>
 
-<file path="src/types/express.d.ts">
-export {};
+<file path="src/modules/admin/admin.repository.ts">
+import { prisma } from "../../database/prisma";
 
-declare global {
-  namespace Express {
-    interface Request {
-      requestId: string;
-    }
+export const findAdminById = (userId: string) => {
+  return prisma.user.findUnique({
+    where: {
+      id: userId,
+    },
+
+    include: {
+      roles: {
+        include: {
+          role: true,
+        },
+      },
+    },
+  });
+};
+</file>
+
+<file path="src/modules/admin/admin.routes.ts">
+import { RoleType } from "@prisma/client";
+import { Router } from "express";
+
+import { requireRoles } from "../../middlewares/role.middleware";
+import { asyncHandler } from "../../utils/async-handler";
+
+import { getAdminMeController } from "./admin.controller";
+
+const adminRouter = Router();
+
+adminRouter.get(
+  "/me",
+
+  requireRoles([RoleType.ADMIN]),
+
+  asyncHandler(getAdminMeController),
+);
+
+export { adminRouter };
+</file>
+
+<file path="src/modules/admin/admin.service.ts">
+import { AppError } from "../../common/errors/app-error";
+
+import { findAdminById } from "./admin.repository";
+
+export const getAdminProfile = async (userId: string) => {
+  const admin = await findAdminById(userId);
+
+  if (!admin) {
+    throw new AppError("Admin not found", 404, "ADMIN_NOT_FOUND");
+  }
+
+  return {
+    id: admin.id,
+
+    email: admin.email,
+
+    roles: admin.roles.map((userRole) => userRole.role.name),
+
+    createdAt: admin.createdAt,
+  };
+};
+</file>
+
+<file path="src/modules/auth/auth.constants.ts">
+export const ACCESS_TOKEN_EXPIRES_IN = "15m";
+
+export const REFRESH_TOKEN_EXPIRES_IN = "30d";
+
+export const EMAIL_VERIFICATION_EXPIRES_IN_MINUTES = 15;
+
+export const PASSWORD_RESET_EXPIRES_IN_MINUTES = 15;
+
+export const MAX_EMAIL_VERIFICATION_ATTEMPTS = 5;
+</file>
+
+<file path="src/modules/onboarding/onboarding-field/onboarding-field.controller.ts">
+import type { Request, Response } from "express";
+
+import { sendSuccessResponse } from "../../../utils/api-response";
+
+import {
+  createOnboardingFieldService,
+  getFieldsByCategoryIdService,
+  getFieldsByCategorySlugService,
+} from "./onboarding-field.service";
+
+type CategoryIdParams = {
+  categoryId: string;
+};
+
+type CategorySlugParams = {
+  slug: string;
+};
+
+export const createOnboardingFieldController = async (
+  req: Request,
+  res: Response,
+): Promise<void> => {
+  const field = await createOnboardingFieldService(req.body);
+
+  sendSuccessResponse(res, 201, "Onboarding field created successfully", field);
+};
+
+export const getFieldsByCategoryIdController = async (
+  req: Request<CategoryIdParams>,
+  res: Response,
+): Promise<void> => {
+  const fields = await getFieldsByCategoryIdService(req.params.categoryId);
+
+  sendSuccessResponse(
+    res,
+    200,
+    "Onboarding fields fetched successfully",
+    fields,
+  );
+};
+
+export const getFieldsByCategorySlugController = async (
+  req: Request<CategorySlugParams>,
+  res: Response,
+): Promise<void> => {
+  const fields = await getFieldsByCategorySlugService(req.params.slug);
+
+  sendSuccessResponse(
+    res,
+    200,
+    "Onboarding form schema fetched successfully",
+    fields,
+  );
+};
+</file>
+
+<file path="src/modules/onboarding/onboarding-field/onboarding-field.repository.ts">
+import type { OnboardingFieldType, Prisma } from "@prisma/client";
+
+import { prisma } from "../../../database/prisma";
+
+interface CreateOnboardingFieldParams {
+  categoryId: string;
+
+  label: string;
+
+  fieldKey: string;
+
+  fieldType: OnboardingFieldType;
+
+  placeholder?: string;
+
+  helpText?: string;
+
+  isRequired?: boolean;
+
+  sortOrder: number;
+
+  options?: Prisma.InputJsonValue;
+}
+
+export const createOnboardingField = (data: CreateOnboardingFieldParams) => {
+  return prisma.onboardingField.create({
+    data,
+  });
+};
+
+export const findOnboardingFieldByKey = (fieldKey: string) => {
+  return prisma.onboardingField.findUnique({
+    where: {
+      fieldKey,
+    },
+  });
+};
+
+export const findCategoryById = (categoryId: string) => {
+  return prisma.onboardingCategory.findUnique({
+    where: {
+      id: categoryId,
+    },
+  });
+};
+
+export const getFieldsByCategoryId = (categoryId: string) => {
+  return prisma.onboardingField.findMany({
+    where: {
+      categoryId,
+
+      isActive: true,
+    },
+
+    orderBy: {
+      sortOrder: "asc",
+    },
+  });
+};
+
+export const getFieldsByCategorySlug = (slug: string) => {
+  return prisma.onboardingField.findMany({
+    where: {
+      isActive: true,
+
+      category: {
+        slug,
+
+        isActive: true,
+      },
+    },
+
+    orderBy: {
+      sortOrder: "asc",
+    },
+  });
+};
+</file>
+
+<file path="src/modules/onboarding/onboarding-field/onboarding-field.service.ts">
+import { OnboardingFieldType } from "@prisma/client";
+import slugify from "slugify";
+
+import { AppError } from "../../../common/errors/app-error";
+
+import {
+  createOnboardingField,
+  findCategoryById,
+  findOnboardingFieldByKey,
+  getFieldsByCategoryId,
+  getFieldsByCategorySlug,
+} from "./onboarding-field.repository";
+
+interface CreateOnboardingFieldInput {
+  categoryId: string;
+
+  label: string;
+
+  fieldType: OnboardingFieldType;
+
+  placeholder?: string;
+
+  helpText?: string;
+
+  isRequired?: boolean;
+
+  sortOrder: number;
+
+  options?: string[];
+}
+
+const fieldTypesRequiringOptions: OnboardingFieldType[] = [
+  OnboardingFieldType.SELECT,
+  OnboardingFieldType.MULTI_SELECT,
+];
+
+export const createOnboardingFieldService = async (
+  input: CreateOnboardingFieldInput,
+) => {
+  const category = await findCategoryById(input.categoryId);
+
+  if (!category) {
+    throw new AppError(
+      "Onboarding category not found",
+      404,
+      "ONBOARDING_CATEGORY_NOT_FOUND",
+    );
+  }
+
+  const generatedFieldKey = slugify(input.label, {
+    lower: true,
+
+    strict: true,
+
+    replacement: "_",
+  });
+
+  const existingField = await findOnboardingFieldByKey(generatedFieldKey);
+
+  if (existingField) {
+    throw new AppError(
+      "Field key already exists",
+      409,
+      "ONBOARDING_FIELD_ALREADY_EXISTS",
+    );
+  }
+
+  const requiresOptions = fieldTypesRequiringOptions.includes(input.fieldType);
+
+  if (requiresOptions && (!input.options || input.options.length === 0)) {
+    throw new AppError(
+      "Field options are required",
+      400,
+      "FIELD_OPTIONS_REQUIRED",
+    );
+  }
+
+  return createOnboardingField({
+    categoryId: input.categoryId,
+
+    label: input.label.trim(),
+
+    fieldKey: generatedFieldKey,
+
+    fieldType: input.fieldType,
+
+    placeholder: input.placeholder?.trim(),
+
+    helpText: input.helpText?.trim(),
+
+    isRequired: input.isRequired ?? false,
+
+    sortOrder: input.sortOrder,
+
+    options: input.options,
+  });
+};
+
+export const getFieldsByCategoryIdService = async (categoryId: string) => {
+  return getFieldsByCategoryId(categoryId);
+};
+
+export const getFieldsByCategorySlugService = async (slug: string) => {
+  return getFieldsByCategorySlug(slug);
+};
+</file>
+
+<file path="src/modules/upload/upload.routes.ts">
+import { RoleType } from "@prisma/client";
+import { Router } from "express";
+
+import { requireRoles } from "../../middlewares/role.middleware";
+import { uploadMiddleware } from "../../middlewares/upload.middleware";
+import { asyncHandler } from "../../utils/async-handler";
+
+import { uploadFileController } from "./upload.controller";
+
+const uploadRouter = Router();
+
+uploadRouter.post(
+  "/",
+
+  requireRoles([RoleType.ADMIN, RoleType.MENTOR]),
+
+  uploadMiddleware.single("file"),
+
+  asyncHandler(uploadFileController),
+);
+
+export { uploadRouter };
+</file>
+
+<file path="src/shared/providers/email/brevo.provider.ts">
+import { BrevoClient } from "@getbrevo/brevo";
+
+import { config } from "../../../config";
+
+import type { EmailProvider, SendEmailOptions } from "./email.types";
+
+const brevoClient = new BrevoClient({
+  apiKey: config.mail.brevoApiKey,
+});
+
+class BrevoProvider implements EmailProvider {
+  async sendEmail(options: SendEmailOptions): Promise<void> {
+    await brevoClient.transactionalEmails.sendTransacEmail({
+      subject: options.subject,
+
+      htmlContent: options.html,
+
+      sender: {
+        email: config.mail.fromEmail,
+
+        name: config.mail.fromName,
+      },
+
+      to: [
+        {
+          email: options.to,
+        },
+      ],
+    });
   }
 }
+
+export const brevoProvider = new BrevoProvider();
 </file>
 
 <file path="src/utils/api-response.ts">
@@ -847,22 +2358,6 @@ export const sendSuccessResponse = <T>(
 
     timestamp: new Date().toISOString(),
   });
-};
-</file>
-
-<file path="src/utils/async-handler.ts">
-import type { NextFunction, Request, RequestHandler, Response } from "express";
-
-type AsyncController = (
-  req: Request,
-  res: Response,
-  next: NextFunction,
-) => Promise<unknown>;
-
-export const asyncHandler = (controller: AsyncController): RequestHandler => {
-  return (req: Request, res: Response, next: NextFunction) => {
-    Promise.resolve(controller(req, res, next)).catch(next);
-  };
 };
 </file>
 
@@ -939,6 +2434,37 @@ export const validateRequest = <
 }
 </file>
 
+<file path=".env.example">
+PORT=
+
+NODE_ENV=
+
+DATABASE_URL=
+
+DIRECT_URL=
+
+CLIENT_URL=
+
+JWT_ACCESS_SECRET=
+
+JWT_REFRESH_SECRET=
+
+BREVO_API_KEY=
+
+MAIL_FROM_EMAIL=
+MAIL_FROM_NAME=
+</file>
+
+<file path=".gitignore">
+node_modules
+dist
+.env
+/src/generated/prisma
+repomix-output.xml
+migrations
+coverage
+</file>
+
 <file path="src/app.ts">
 import compression from "compression";
 import cookieParser from "cookie-parser";
@@ -996,149 +2522,6 @@ app.use(notFoundMiddleware);
 app.use(globalErrorMiddleware);
 
 export default app;
-</file>
-
-<file path="src/config/env.ts">
-import dotenv from "dotenv";
-import pino from "pino";
-import { z } from "zod";
-
-dotenv.config();
-
-const envLogger = pino({
-  level: "fatal",
-  base: undefined,
-  timestamp: pino.stdTimeFunctions.isoTime,
-});
-
-const envSchema = z.object({
-  PORT: z.coerce.number().int().positive().default(5000),
-
-  NODE_ENV: z.enum(["development", "production", "test"]),
-
-  DATABASE_URL: z.url(),
-
-  CLIENT_URL: z.url(),
-
-  TRUST_PROXY: z
-    .union([
-      z.boolean(),
-      z.coerce.number().int().nonnegative(),
-      z.string().min(1),
-    ])
-    .default(1),
-
-  JWT_ACCESS_SECRET: z.string().min(10, "JWT_ACCESS_SECRET is too short"),
-
-  JWT_REFRESH_SECRET: z.string().min(10, "JWT_REFRESH_SECRET is too short"),
-});
-
-const parsedEnv = envSchema.safeParse(process.env);
-
-if (!parsedEnv.success) {
-  envLogger.fatal(
-    {
-      errors: parsedEnv.error.flatten().fieldErrors,
-    },
-    "Invalid environment variables",
-  );
-
-  process.exit(1);
-}
-
-export const env = parsedEnv.data;
-</file>
-
-<file path="src/config/index.ts">
-import { env } from "./env";
-
-export const config = {
-  port: env.PORT,
-
-  nodeEnv: env.NODE_ENV,
-
-  apiPrefix: "/api/v1",
-
-  trustProxy: env.TRUST_PROXY,
-
-  databaseUrl: env.DATABASE_URL,
-
-  clientUrl: env.CLIENT_URL,
-
-  jwt: {
-    accessSecret: env.JWT_ACCESS_SECRET,
-
-    refreshSecret: env.JWT_REFRESH_SECRET,
-  },
-} as const;
-</file>
-
-<file path="src/database/prisma.ts">
-import { PrismaClient } from "@prisma/client";
-
-import { config } from "../config";
-import { logger } from "../logger";
-
-const globalForPrisma =
-  globalThis as unknown as {
-    prisma?: PrismaClient;
-  };
-
-export const prisma =
-  globalForPrisma.prisma ??
-  new PrismaClient({
-    log:
-      config.nodeEnv === "development"
-        ? ["error", "warn"]
-        : ["error"],
-  });
-
-if (config.nodeEnv !== "production") {
-  globalForPrisma.prisma = prisma;
-}
-
-export const connectPrisma = async (): Promise<void> => {
-  try {
-    logger.info(
-      "Connecting to PostgreSQL database",
-    );
-
-    await prisma.$connect();
-
-    await prisma.$queryRaw`SELECT 1`;
-
-    logger.info(
-      "PostgreSQL database connected successfully",
-    );
-  } catch (error) {
-    logger.fatal(
-      { error },
-      "Failed to connect to PostgreSQL database",
-    );
-
-    throw error;
-  }
-};
-
-export const disconnectPrisma =
-  async (): Promise<void> => {
-    try {
-      logger.info(
-        "Disconnecting PostgreSQL database",
-      );
-
-      await prisma.$disconnect();
-
-      logger.info(
-        "PostgreSQL database disconnected successfully",
-      );
-    } catch (error) {
-      logger.error(
-        { error },
-        "Failed to disconnect PostgreSQL database",
-      );
-    }
-  };
 </file>
 
 <file path="src/middlewares/error.middleware.ts">
@@ -1297,15 +2680,237 @@ export const requestLoggerMiddleware = (
 };
 </file>
 
-<file path="src/modules/index.ts">
-import type { Router } from "express";
+<file path="src/modules/auth/auth.controller.ts">
+import type { Request, Response } from "express";
 
-export interface ModuleRouteDefinition {
-  path: string;
-  router: Router;
-}
+import { sendSuccessResponse } from "../../utils/api-response";
 
-export const moduleRoutes: ModuleRouteDefinition[] = [];
+import {
+  registerUser,
+  loginUser,
+  refreshAuthToken,
+  logoutUser,
+} from "./auth.service";
+import { verifyEmailOtp } from "./services/verify-email.service";
+
+export const registerUserController = async (
+  req: Request,
+  res: Response,
+): Promise<void> => {
+  const user = await registerUser(req.body);
+
+  res.status(201).json({
+    success: true,
+
+    message: "Registration successful",
+
+    data: {
+      userId: user.id,
+
+      email: user.email,
+    },
+  });
+};
+
+export const verifyEmailOtpController = async (
+  req: Request,
+  res: Response,
+): Promise<void> => {
+  await verifyEmailOtp(req.body);
+
+  res.status(200).json({
+    success: true,
+
+    message: "Email verified successfully",
+  });
+};
+
+export const loginUserController = async (
+  req: Request,
+  res: Response,
+): Promise<void> => {
+  const authResponse = await loginUser({
+    ...req.body,
+
+    userAgent: req.headers["user-agent"],
+
+    ipAddress: req.ip,
+  });
+
+  res.status(200).json({
+    success: true,
+
+    message: "Login successful",
+
+    data: authResponse,
+  });
+};
+
+export const refreshTokenController = async (
+  req: Request,
+  res: Response,
+): Promise<void> => {
+  const authResponse = await refreshAuthToken({
+    ...req.body,
+
+    userAgent: req.headers["user-agent"],
+
+    ipAddress: req.ip,
+  });
+
+  sendSuccessResponse(res, 200, "Token refreshed successfully", authResponse);
+};
+
+export const logoutController = async (
+  req: Request,
+  res: Response,
+): Promise<void> => {
+  await logoutUser(req.body);
+
+  sendSuccessResponse(res, 200, "Logout successful", null);
+};
+</file>
+
+<file path="src/modules/auth/auth.routes.ts">
+import { Router } from "express";
+
+import { validateRequest } from "../../middlewares/validation.middleware";
+
+import {
+  registerUserController,
+  verifyEmailOtpController,
+  loginUserController,
+  refreshTokenController,
+  logoutController,
+} from "./auth.controller";
+import {
+  registerUserSchema,
+  verifyEmailOtpSchema,
+  loginSchema,
+  refreshTokenSchema,
+  logoutSchema,
+} from "./auth.validation";
+
+const authRouter = Router();
+
+authRouter.post(
+  "/register",
+  validateRequest({
+    body: registerUserSchema,
+  }),
+  registerUserController,
+);
+
+authRouter.post(
+  "/verify-email",
+  validateRequest({
+    body: verifyEmailOtpSchema,
+  }),
+  verifyEmailOtpController,
+);
+
+authRouter.post(
+  "/login",
+  validateRequest({
+    body: loginSchema,
+  }),
+  loginUserController,
+);
+
+authRouter.post(
+  "/refresh",
+  validateRequest({
+    body: refreshTokenSchema,
+  }),
+  refreshTokenController,
+);
+
+authRouter.post(
+  "/logout",
+  validateRequest({
+    body: logoutSchema,
+  }),
+  logoutController,
+);
+
+export { authRouter };
+</file>
+
+<file path="src/modules/auth/auth.validation.ts">
+import { z } from "zod";
+
+export const registerUserSchema = z.object({
+  email: z.email(),
+
+  password: z.string().min(8).max(72),
+
+  role: z.enum(["USER", "MENTOR"]),
+});
+
+export type RegisterUserSchema = z.infer<typeof registerUserSchema>;
+
+export const verifyEmailOtpSchema = z.object({
+  otp: z.string().length(6),
+});
+
+export type VerifyEmailOtpSchema = z.infer<typeof verifyEmailOtpSchema>;
+
+export const loginSchema = z.object({
+  email: z.email(),
+
+  password: z.string().min(8).max(72),
+});
+
+export type LoginSchema = z.infer<typeof loginSchema>;
+
+export const refreshTokenSchema = z.object({
+  refreshToken: z.string().min(1),
+});
+
+export type RefreshTokenSchema = z.infer<typeof refreshTokenSchema>;
+
+export const logoutSchema = z.object({
+  refreshToken: z.string().min(1),
+});
+
+export type LogoutSchema = z.infer<typeof logoutSchema>;
+</file>
+
+<file path="src/modules/onboarding/onboarding-field/onboarding-field.validation.ts">
+import { OnboardingFieldType } from "@prisma/client";
+import { z } from "zod";
+
+export const createOnboardingFieldSchema = {
+  body: z.object({
+    categoryId: z.string().cuid(),
+
+    label: z.string().trim().min(2).max(100),
+
+    fieldType: z.nativeEnum(OnboardingFieldType),
+
+    placeholder: z.string().trim().max(200).optional(),
+
+    helpText: z.string().trim().max(500).optional(),
+
+    isRequired: z.boolean().optional(),
+
+    sortOrder: z.number().int().min(0),
+
+    options: z.array(z.string().trim().min(1)).optional(),
+  }),
+};
+
+export const categoryIdParamsSchema = {
+  params: z.object({
+    categoryId: z.string().cuid(),
+  }),
+};
+
+export const categorySlugParamsSchema = {
+  params: z.object({
+    slug: z.string().trim().min(1).max(100),
+  }),
+};
 </file>
 
 <file path="src/routes/health.route.ts">
@@ -1324,6 +2929,1553 @@ router.get("/", (_req, res) => {
 });
 
 export default router;
+</file>
+
+<file path="src/routes/index.ts">
+import { Router } from "express";
+
+import { authMiddleware } from "../middlewares/auth.middleware";
+import { moduleRoutes } from "../modules";
+import { authRouter } from "../modules/auth/auth.routes";
+
+import healthRouter from "./health.route";
+
+interface RouteDefinition {
+  path: string;
+
+  router: Router;
+
+  isPrivate?: boolean;
+}
+
+const routeDefinitions: RouteDefinition[] = [
+  {
+    path: "/health",
+
+    router: healthRouter,
+  },
+
+  {
+    path: "/auth",
+
+    router: authRouter,
+  },
+
+  ...moduleRoutes,
+];
+
+export const routes = Router();
+
+routeDefinitions.forEach(({ path, router, isPrivate }) => {
+  if (isPrivate) {
+    routes.use(path, authMiddleware, router);
+
+    return;
+  }
+
+  routes.use(path, router);
+});
+</file>
+
+<file path="src/server.ts">
+import app from "./app";
+import { initializeDatabase } from "./bootstrap/database";
+import { startHttpServer } from "./bootstrap/http-server";
+import { registerProcessHandlers } from "./bootstrap/process-handlers";
+import { logger } from "./logger";
+
+const bootstrapServer = async (): Promise<void> => {
+  try {
+    logger.info("Starting application bootstrap");
+
+    await initializeDatabase();
+
+    const server = startHttpServer(app);
+
+    registerProcessHandlers(server);
+
+    logger.info("Application bootstrap completed successfully");
+  } catch (error) {
+    logger.fatal({ error }, "Application bootstrap failed");
+
+    process.exit(1);
+  }
+};
+
+void bootstrapServer();
+</file>
+
+<file path="src/types/express.d.ts">
+import type { RoleType } from "@prisma/client";
+
+export {};
+
+declare global {
+  namespace Express {
+    interface AuthenticatedUser {
+      userId: string;
+
+      sessionId: string;
+
+      roles: RoleType[];
+
+      tokenVersion: number;
+    }
+
+    interface Request {
+      requestId: string;
+
+      user?: AuthenticatedUser;
+    }
+  }
+}
+</file>
+
+<file path="src/utils/async-handler.ts">
+import type { NextFunction, Request, RequestHandler, Response } from "express";
+
+export const asyncHandler =
+  <
+    P = Record<string, string>,
+    ResBody = unknown,
+    ReqBody = unknown,
+    ReqQuery = unknown,
+  >(
+    controller: (
+      req: Request<P, ResBody, ReqBody, ReqQuery>,
+      res: Response<ResBody>,
+      next: NextFunction,
+    ) => Promise<void>,
+  ): RequestHandler<P, ResBody, ReqBody, ReqQuery> =>
+  (req, res, next) => {
+    Promise.resolve(controller(req, res, next)).catch(next);
+  };
+</file>
+
+<file path="src/database/prisma.ts">
+import { PrismaClient } from "@prisma/client";
+
+import { config } from "../config";
+import { logger } from "../logger";
+
+const globalForPrisma = globalThis as unknown as {
+  prisma?: PrismaClient;
+};
+
+export const prisma =
+  globalForPrisma.prisma ??
+  new PrismaClient({
+    log: config.nodeEnv === "development" ? ["error", "warn"] : ["error"],
+  });
+
+if (config.nodeEnv !== "production") {
+  globalForPrisma.prisma = prisma;
+}
+
+export const connectPrisma = async (): Promise<void> => {
+  try {
+    logger.info("Connecting to PostgreSQL database");
+
+    await prisma.$connect();
+
+    await prisma.$queryRaw`SELECT 1`;
+
+    logger.info("PostgreSQL database connected successfully");
+  } catch (error) {
+    logger.fatal({ error }, "Failed to connect to PostgreSQL database");
+
+    throw error;
+  }
+};
+
+export const disconnectPrisma = async (): Promise<void> => {
+  try {
+    logger.info("Disconnecting PostgreSQL database");
+
+    await prisma.$disconnect();
+
+    logger.info("PostgreSQL database disconnected successfully");
+  } catch (error) {
+    logger.error({ error }, "Failed to disconnect PostgreSQL database");
+  }
+};
+</file>
+
+<file path="src/modules/auth/auth.utils.ts">
+import crypto from "node:crypto";
+
+import bcrypt from "bcrypt";
+import jwt from "jsonwebtoken";
+
+import { config } from "../../config";
+
+import {
+  ACCESS_TOKEN_EXPIRES_IN,
+  REFRESH_TOKEN_EXPIRES_IN,
+} from "./auth.constants";
+
+interface AccessTokenPayload {
+  userId: string;
+
+  sessionId: string;
+
+  roles: string[];
+
+  tokenVersion: number;
+}
+
+interface RefreshTokenPayload {
+  sessionId: string;
+
+  tokenVersion: number;
+}
+
+const SALT_ROUNDS = 10;
+
+export const hashPassword = async (password: string): Promise<string> => {
+  return bcrypt.hash(password, SALT_ROUNDS);
+};
+
+export const comparePassword = async (
+  password: string,
+  passwordHash: string,
+): Promise<boolean> => {
+  return bcrypt.compare(password, passwordHash);
+};
+
+export const generateSecureToken = (): string => {
+  return crypto.randomBytes(32).toString("hex");
+};
+
+export const hashToken = (token: string): string => {
+  return crypto.createHash("sha256").update(token).digest("hex");
+};
+
+export const compareTokenHash = (token: string, tokenHash: string): boolean => {
+  const incomingTokenHash = hashToken(token);
+
+  const incomingBuffer = Buffer.from(incomingTokenHash, "hex");
+
+  const storedBuffer = Buffer.from(tokenHash, "hex");
+
+  if (incomingBuffer.length !== storedBuffer.length) {
+    return false;
+  }
+
+  return crypto.timingSafeEqual(incomingBuffer, storedBuffer);
+};
+
+export const generateAccessToken = (payload: AccessTokenPayload): string => {
+  return jwt.sign(payload, config.jwt.accessSecret, {
+    expiresIn: ACCESS_TOKEN_EXPIRES_IN,
+  });
+};
+
+export const generateRefreshToken = (payload: RefreshTokenPayload): string => {
+  return jwt.sign(payload, config.jwt.refreshSecret, {
+    expiresIn: REFRESH_TOKEN_EXPIRES_IN,
+  });
+};
+
+export const verifyAccessToken = (token: string): AccessTokenPayload => {
+  return jwt.verify(token, config.jwt.accessSecret) as AccessTokenPayload;
+};
+
+export const verifyRefreshToken = (token: string): RefreshTokenPayload => {
+  return jwt.verify(token, config.jwt.refreshSecret) as RefreshTokenPayload;
+};
+
+export const generateOtp = (): string => {
+  return Math.floor(100000 + Math.random() * 900000).toString();
+};
+</file>
+
+<file path="src/modules/auth/auth.repository.ts">
+import type { Prisma, RoleType } from "@prisma/client";
+
+import { prisma } from "../../database/prisma";
+
+import type {
+  CreateUserParams,
+  CreateSessionParams,
+  RotateSessionTokenParams,
+  AssignRoleParams,
+  CreateEmailVerificationTokenParams,
+} from "./auth.types";
+
+export const findUserByEmail = (email: string) => {
+  return prisma.user.findUnique({
+    where: {
+      email,
+    },
+
+    include: {
+      roles: {
+        include: {
+          role: true,
+        },
+      },
+
+      mentorProfile: true,
+    },
+  });
+};
+
+export const findRoleByName = (roleName: RoleType) => {
+  return prisma.role.findUnique({
+    where: {
+      name: roleName,
+    },
+  });
+};
+
+export const createUser = (
+  data: CreateUserParams,
+  tx?: Prisma.TransactionClient,
+) => {
+  const database = tx ?? prisma;
+
+  return database.user.create({
+    data,
+  });
+};
+
+export const assignRoleToUser = (
+  data: AssignRoleParams,
+  tx?: Prisma.TransactionClient,
+) => {
+  const database = tx ?? prisma;
+
+  return database.userRole.create({
+    data,
+  });
+};
+
+export const createMentorProfile = (
+  userId: string,
+  tx?: Prisma.TransactionClient,
+) => {
+  const database = tx ?? prisma;
+
+  return database.mentorProfile.create({
+    data: {
+      userId,
+    },
+  });
+};
+
+export const createSession = (
+  data: CreateSessionParams,
+  tx?: Prisma.TransactionClient,
+) => {
+  const database = tx ?? prisma;
+
+  return database.session.create({
+    data,
+  });
+};
+
+export const findSessionById = (
+  sessionId: string,
+  tx?: Prisma.TransactionClient,
+) => {
+  const database = tx ?? prisma;
+
+  return database.session.findUnique({
+    where: {
+      id: sessionId,
+    },
+
+    include: {
+      user: {
+        include: {
+          roles: {
+            include: {
+              role: true,
+            },
+          },
+
+          mentorProfile: true,
+        },
+      },
+    },
+  });
+};
+
+export const rotateSessionToken = (
+  data: RotateSessionTokenParams,
+  tx?: Prisma.TransactionClient,
+) => {
+  const database = tx ?? prisma;
+
+  return database.session.updateMany({
+    where: {
+      id: data.sessionId,
+
+      tokenVersion: data.currentTokenVersion,
+
+      revokedAt: null,
+
+      expiresAt: {
+        gt: new Date(),
+      },
+    },
+
+    data: {
+      refreshTokenHash: data.refreshTokenHash,
+
+      expiresAt: data.expiresAt,
+
+      tokenVersion: data.nextTokenVersion,
+
+      userAgent: data.userAgent,
+
+      ipAddress: data.ipAddress,
+
+      lastUsedAt: new Date(),
+    },
+  });
+};
+
+export const revokeSession = (
+  sessionId: string,
+  tx?: Prisma.TransactionClient,
+) => {
+  const database = tx ?? prisma;
+
+  return database.session.updateMany({
+    where: {
+      id: sessionId,
+
+      revokedAt: null,
+    },
+
+    data: {
+      revokedAt: new Date(),
+    },
+  });
+};
+
+export const revokeAllUserSessions = (userId: string) => {
+  return prisma.session.updateMany({
+    where: {
+      userId,
+
+      revokedAt: null,
+    },
+
+    data: {
+      revokedAt: new Date(),
+    },
+  });
+};
+
+export const updateSessionLastUsed = (sessionId: string) => {
+  return prisma.session.update({
+    where: {
+      id: sessionId,
+    },
+
+    data: {
+      lastUsedAt: new Date(),
+    },
+  });
+};
+
+export const createEmailVerificationToken = (
+  data: CreateEmailVerificationTokenParams,
+  tx?: Prisma.TransactionClient,
+) => {
+  const database = tx ?? prisma;
+
+  return database.emailVerificationToken.create({
+    data,
+  });
+};
+
+export const findEmailVerificationToken = (tokenHash: string) => {
+  return prisma.emailVerificationToken.findFirst({
+    where: {
+      tokenHash,
+
+      usedAt: null,
+    },
+
+    include: {
+      user: true,
+    },
+
+    orderBy: {
+      createdAt: "desc",
+    },
+  });
+};
+
+export const markEmailVerificationTokenUsed = (tokenId: string) => {
+  return prisma.emailVerificationToken.update({
+    where: {
+      id: tokenId,
+    },
+
+    data: {
+      usedAt: new Date(),
+    },
+  });
+};
+
+export const markUserEmailVerified = (userId: string) => {
+  return prisma.user.update({
+    where: {
+      id: userId,
+    },
+
+    data: {
+      isEmailVerified: true,
+    },
+  });
+};
+
+export const incrementEmailVerificationAttempts = (tokenId: string) => {
+  return prisma.emailVerificationToken.update({
+    where: {
+      id: tokenId,
+    },
+
+    data: {
+      attemptCount: {
+        increment: 1,
+      },
+    },
+  });
+};
+</file>
+
+<file path="src/modules/auth/auth.service.ts">
+import { RoleType } from "@prisma/client";
+import { addDays } from "date-fns";
+
+import { AppError } from "../../common/errors/app-error";
+import { runTransaction } from "../../database/transaction";
+import { logger } from "../../logger";
+
+import {
+  assignRoleToUser,
+  createMentorProfile,
+  createSession,
+  createUser,
+  findRoleByName,
+  findSessionById,
+  findUserByEmail,
+  revokeSession,
+  rotateSessionToken,
+} from "./auth.repository";
+import type {
+  AuthResponse,
+  LoginUserInput,
+  LogoutInput,
+  RefreshTokenInput,
+  RegisterUserInput,
+} from "./auth.types";
+import {
+  hashPassword,
+  comparePassword,
+  compareTokenHash,
+  generateAccessToken,
+  generateRefreshToken,
+  verifyRefreshToken,
+} from "./auth.utils";
+import { hashToken } from "./auth.utils";
+import { sendVerificationEmail } from "./services/email-verification.service";
+
+const createInvalidRefreshTokenError = () => {
+  return new AppError("Invalid refresh token", 401, "INVALID_REFRESH_TOKEN");
+};
+
+const verifyRefreshTokenOrThrow = (refreshToken: string) => {
+  try {
+    return verifyRefreshToken(refreshToken);
+  } catch {
+    throw createInvalidRefreshTokenError();
+  }
+};
+
+export const registerUser = async (input: RegisterUserInput) => {
+  const existingUser = await findUserByEmail(input.email);
+
+  if (existingUser) {
+    throw new AppError("User already exists", 409, "USER_ALREADY_EXISTS");
+  }
+
+  const passwordHash = await hashPassword(input.password);
+
+  const userRole = await findRoleByName(RoleType.USER);
+
+  if (!userRole) {
+    throw new AppError("USER role not found", 500, "ROLE_NOT_FOUND");
+  }
+
+  const mentorRole =
+    input.role === "MENTOR" ? await findRoleByName(RoleType.MENTOR) : null;
+
+  const user = await runTransaction(async (tx) => {
+    const createdUser = await createUser(
+      {
+        email: input.email,
+
+        passwordHash,
+      },
+      tx,
+    );
+
+    await assignRoleToUser(
+      {
+        userId: createdUser.id,
+
+        roleId: userRole.id,
+      },
+      tx,
+    );
+
+    if (mentorRole) {
+      await assignRoleToUser(
+        {
+          userId: createdUser.id,
+
+          roleId: mentorRole.id,
+        },
+        tx,
+      );
+
+      await createMentorProfile(createdUser.id, tx);
+    }
+
+    return createdUser;
+  });
+
+  try {
+    await sendVerificationEmail({
+      userId: user.id,
+
+      email: user.email,
+    });
+  } catch (error) {
+    console.error(
+      "Failed to send verification email",
+      JSON.stringify(error, null, 2),
+    );
+  }
+
+  return user;
+};
+
+export const loginUser = async (
+  input: LoginUserInput,
+): Promise<AuthResponse> => {
+  const user = await findUserByEmail(input.email);
+
+  if (!user) {
+    throw new AppError("Invalid credentials", 401, "INVALID_CREDENTIALS");
+  }
+
+  if (!user.isEmailVerified) {
+    throw new AppError("Email not verified", 403, "EMAIL_NOT_VERIFIED");
+  }
+
+  const isPasswordValid = await comparePassword(
+    input.password,
+    user.passwordHash,
+  );
+
+  if (!isPasswordValid) {
+    throw new AppError("Invalid credentials", 401, "INVALID_CREDENTIALS");
+  }
+
+  const session = await createSession({
+    userId: user.id,
+
+    refreshTokenHash: "",
+
+    expiresAt: addDays(new Date(), 30),
+
+    userAgent: input.userAgent,
+
+    ipAddress: input.ipAddress,
+  });
+
+  const roles = user.roles.map((userRole) => userRole.role.name);
+
+  const accessToken = generateAccessToken({
+    userId: user.id,
+
+    sessionId: session.id,
+
+    roles,
+
+    tokenVersion: session.tokenVersion,
+  });
+
+  const refreshToken = generateRefreshToken({
+    sessionId: session.id,
+
+    tokenVersion: session.tokenVersion,
+  });
+
+  const refreshTokenHash = hashToken(refreshToken);
+
+  await rotateSessionToken({
+    sessionId: session.id,
+
+    refreshTokenHash,
+
+    expiresAt: addDays(new Date(), 30),
+
+    currentTokenVersion: session.tokenVersion,
+
+    nextTokenVersion: session.tokenVersion,
+  });
+
+  return {
+    accessToken,
+
+    refreshToken,
+
+    user: {
+      id: user.id,
+
+      email: user.email,
+
+      isEmailVerified: user.isEmailVerified,
+
+      roles,
+    },
+  };
+};
+
+export const refreshAuthToken = async (
+  input: RefreshTokenInput,
+): Promise<AuthResponse> => {
+  const tokenPayload = verifyRefreshTokenOrThrow(input.refreshToken);
+
+  return runTransaction(async (tx) => {
+    const session = await findSessionById(tokenPayload.sessionId, tx);
+
+    if (!session) {
+      throw createInvalidRefreshTokenError();
+    }
+
+    if (session.revokedAt) {
+      throw createInvalidRefreshTokenError();
+    }
+
+    if (session.expiresAt <= new Date()) {
+      throw createInvalidRefreshTokenError();
+    }
+
+    if (session.tokenVersion !== tokenPayload.tokenVersion) {
+      throw createInvalidRefreshTokenError();
+    }
+
+    if (!compareTokenHash(input.refreshToken, session.refreshTokenHash)) {
+      throw createInvalidRefreshTokenError();
+    }
+
+    const roles = session.user.roles.map((userRole) => userRole.role.name);
+
+    const nextTokenVersion = session.tokenVersion + 1;
+
+    const accessToken = generateAccessToken({
+      userId: session.user.id,
+
+      sessionId: session.id,
+
+      roles,
+
+      tokenVersion: nextTokenVersion,
+    });
+
+    const refreshToken = generateRefreshToken({
+      sessionId: session.id,
+
+      tokenVersion: nextTokenVersion,
+    });
+
+    const refreshTokenHash = hashToken(refreshToken);
+
+    const rotationResult = await rotateSessionToken(
+      {
+        sessionId: session.id,
+
+        refreshTokenHash,
+
+        expiresAt: addDays(new Date(), 30),
+
+        currentTokenVersion: session.tokenVersion,
+
+        nextTokenVersion,
+
+        userAgent: input.userAgent,
+
+        ipAddress: input.ipAddress,
+      },
+      tx,
+    );
+
+    if (rotationResult.count !== 1) {
+      throw createInvalidRefreshTokenError();
+    }
+
+    logger.info(
+      {
+        userId: session.user.id,
+
+        sessionId: session.id,
+      },
+      "Refresh token rotated",
+    );
+
+    return {
+      accessToken,
+
+      refreshToken,
+
+      user: {
+        id: session.user.id,
+
+        email: session.user.email,
+
+        isEmailVerified: session.user.isEmailVerified,
+
+        roles,
+      },
+    };
+  });
+};
+
+export const logoutUser = async (input: LogoutInput): Promise<void> => {
+  const tokenPayload = verifyRefreshTokenOrThrow(input.refreshToken);
+
+  await runTransaction(async (tx) => {
+    const session = await findSessionById(tokenPayload.sessionId, tx);
+
+    if (!session) {
+      throw createInvalidRefreshTokenError();
+    }
+
+    if (session.revokedAt) {
+      return;
+    }
+
+    if (session.expiresAt <= new Date()) {
+      throw createInvalidRefreshTokenError();
+    }
+
+    if (session.tokenVersion !== tokenPayload.tokenVersion) {
+      throw createInvalidRefreshTokenError();
+    }
+
+    if (!compareTokenHash(input.refreshToken, session.refreshTokenHash)) {
+      throw createInvalidRefreshTokenError();
+    }
+
+    await revokeSession(session.id, tx);
+
+    logger.info(
+      {
+        userId: session.userId,
+
+        sessionId: session.id,
+      },
+      "Session revoked",
+    );
+  });
+};
+</file>
+
+<file path="src/config/env.ts">
+import dotenv from "dotenv";
+import pino from "pino";
+import { z } from "zod";
+
+dotenv.config();
+
+const envLogger = pino({
+  level: "fatal",
+  base: undefined,
+  timestamp: pino.stdTimeFunctions.isoTime,
+});
+
+const envSchema = z.object({
+  PORT: z.coerce.number().int().positive().default(5000),
+
+  NODE_ENV: z.enum(["development", "production", "test"]),
+
+  DATABASE_URL: z.url(),
+
+  CLIENT_URL: z.url(),
+
+  TRUST_PROXY: z
+    .union([
+      z.boolean(),
+      z.coerce.number().int().nonnegative(),
+      z.string().min(1),
+    ])
+    .default(1),
+
+  JWT_ACCESS_SECRET: z.string().min(10, "JWT_ACCESS_SECRET is too short"),
+
+  JWT_REFRESH_SECRET: z.string().min(10, "JWT_REFRESH_SECRET is too short"),
+
+  BREVO_API_KEY: z.string().min(1),
+
+  MAIL_FROM_EMAIL: z.email(),
+
+  MAIL_FROM_NAME: z.string().min(1),
+
+  ADMIN_EMAIL: z.email(),
+
+  ADMIN_PASSWORD: z.string().min(8),
+
+  SUPABASE_URL: z.url(),
+
+  SUPABASE_SERVICE_ROLE_KEY: z.string().min(1),
+
+  SUPABASE_STORAGE_BUCKET: z.string().min(1),
+});
+
+const parsedEnv = envSchema.safeParse(process.env);
+
+if (!parsedEnv.success) {
+  envLogger.fatal(
+    {
+      errors: parsedEnv.error.flatten().fieldErrors,
+    },
+    "Invalid environment variables",
+  );
+
+  process.exit(1);
+}
+
+export const env = parsedEnv.data;
+</file>
+
+<file path="src/config/index.ts">
+import { env } from "./env";
+
+export const config = {
+  port: env.PORT,
+
+  nodeEnv: env.NODE_ENV,
+
+  apiPrefix: "/api/v1",
+
+  trustProxy: env.TRUST_PROXY,
+
+  databaseUrl: env.DATABASE_URL,
+
+  clientUrl: env.CLIENT_URL,
+
+  jwt: {
+    accessSecret: env.JWT_ACCESS_SECRET,
+
+    refreshSecret: env.JWT_REFRESH_SECRET,
+  },
+
+  mail: {
+    brevoApiKey: env.BREVO_API_KEY,
+
+    fromEmail: env.MAIL_FROM_EMAIL,
+
+    fromName: env.MAIL_FROM_NAME,
+  },
+
+  admin: {
+    email: env.ADMIN_EMAIL,
+
+    password: env.ADMIN_PASSWORD,
+  },
+
+  storage: {
+    supabaseUrl: env.SUPABASE_URL,
+
+    supabaseServiceRoleKey: env.SUPABASE_SERVICE_ROLE_KEY,
+
+    bucket: env.SUPABASE_STORAGE_BUCKET,
+  },
+} as const;
+</file>
+
+<file path="src/modules/auth/auth.types.ts">
+export interface RegisterUserInput {
+  email: string;
+
+  password: string;
+
+  role: "USER" | "MENTOR";
+}
+
+export interface CreateSessionParams {
+  userId: string;
+
+  refreshTokenHash: string;
+
+  expiresAt: Date;
+
+  userAgent?: string;
+
+  ipAddress?: string;
+}
+
+export interface RotateSessionTokenParams {
+  sessionId: string;
+
+  refreshTokenHash: string;
+
+  expiresAt: Date;
+
+  currentTokenVersion: number;
+
+  nextTokenVersion: number;
+
+  userAgent?: string;
+
+  ipAddress?: string;
+}
+
+export interface RefreshTokenInput {
+  refreshToken: string;
+
+  userAgent?: string;
+
+  ipAddress?: string;
+}
+
+export interface LogoutInput {
+  refreshToken: string;
+}
+
+export interface CreateUserParams {
+  email: string;
+
+  passwordHash: string;
+}
+
+export interface AssignRoleParams {
+  userId: string;
+
+  roleId: string;
+}
+
+export interface CreateEmailVerificationTokenParams {
+  userId: string;
+
+  tokenHash: string;
+
+  expiresAt: Date;
+}
+
+export interface LoginUserInput {
+  email: string;
+
+  password: string;
+
+  userAgent?: string;
+
+  ipAddress?: string;
+}
+
+export interface AuthResponse {
+  accessToken: string;
+
+  refreshToken: string;
+
+  user: {
+    id: string;
+
+    email: string;
+
+    isEmailVerified: boolean;
+
+    roles: string[];
+  };
+}
+</file>
+
+<file path="package.json">
+{
+  "name": "backend-foundation",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "build": "tsc",
+    "start": "node dist/server.js",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier . --write",
+    "format:check": "prettier . --check",
+    "seed": "tsx src/database/seed.ts",
+    "prepare": "husky",
+    "prisma:generate": "prisma generate",
+    "prisma:migrate": "prisma migrate dev",
+    "prisma:deploy": "prisma migrate deploy",
+    "prisma:studio": "prisma studio",
+    "prisma:reset": "prisma migrate reset",
+    "prisma:status": "prisma migrate status"
+  },
+  "lint-staged": {
+    "*.{js,ts,json}": [
+      "prettier --write",
+      "eslint --fix"
+    ]
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "@getbrevo/brevo": "^5.0.4",
+    "@prisma/client": "^6.16.2",
+    "@supabase/supabase-js": "^2.106.1",
+    "bcrypt": "^6.0.0",
+    "compression": "^1.8.1",
+    "cookie-parser": "^1.4.7",
+    "cors": "^2.8.6",
+    "date-fns": "^4.1.0",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "express-rate-limit": "^8.5.1",
+    "helmet": "^8.1.0",
+    "hpp": "^0.2.3",
+    "jsonwebtoken": "^9.0.3",
+    "multer": "^2.1.1",
+    "pino": "^10.3.1",
+    "pino-http": "^11.0.0",
+    "prisma": "^6.16.2",
+    "slugify": "^1.6.9",
+    "ws": "^8.21.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/bcrypt": "^6.0.0",
+    "@types/compression": "^1.8.1",
+    "@types/cookie-parser": "^1.4.10",
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
+    "@types/hpp": "^0.2.7",
+    "@types/jsonwebtoken": "^9.0.10",
+    "@types/multer": "^2.1.0",
+    "@types/node": "^25.6.2",
+    "@types/ws": "^8.18.1",
+    "eslint": "^9.39.4",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-import": "^2.32.0",
+    "eslint-plugin-unused-imports": "^4.4.1",
+    "husky": "^9.1.7",
+    "lint-staged": "^16.4.0",
+    "pino-pretty": "^13.1.3",
+    "prettier": "^3.8.3",
+    "prettier-plugin-packagejson": "^3.0.2",
+    "tsx": "^4.21.0",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.59.3"
+  }
+}
+</file>
+
+<file path="src/modules/index.ts">
+import type { Router } from "express";
+
+import { adminRouter } from "./admin/admin.routes";
+import { onboardingCategoryPublicRouter } from "./onboarding/onboarding-category/onboarding-category.public.routes";
+import { onboardingCategoryRouter } from "./onboarding/onboarding-category/onboarding-category.routes";
+import { onboardingFieldPublicRouter } from "./onboarding/onboarding-field/onboarding-field.public.routes";
+import { onboardingFieldRouter } from "./onboarding/onboarding-field/onboarding-field.routes";
+import { onboardingSubmissionRouter } from "./onboarding/onboarding-submission/onboarding-submission.routes";
+import { uploadRouter } from "./upload/upload.routes";
+
+export interface ModuleRouteDefinition {
+  path: string;
+
+  router: Router;
+
+  isPrivate?: boolean;
+}
+
+export const moduleRoutes: ModuleRouteDefinition[] = [
+  {
+    path: "/admin",
+
+    router: adminRouter,
+
+    isPrivate: true,
+  },
+
+  {
+    path: "/admin/onboarding-categories",
+
+    router: onboardingCategoryRouter,
+
+    isPrivate: true,
+  },
+
+  {
+    path: "/onboarding-categories",
+
+    router: onboardingCategoryPublicRouter,
+  },
+
+  {
+    path: "/uploads",
+
+    router: uploadRouter,
+
+    isPrivate: true,
+  },
+
+  {
+    path: "/onboarding-submissions",
+
+    router: onboardingSubmissionRouter,
+
+    isPrivate: true,
+  },
+
+  {
+    path: "/admin/onboarding-fields",
+
+    router: onboardingFieldRouter,
+
+    isPrivate: true,
+  },
+
+  {
+    path: "/onboarding-fields",
+
+    router: onboardingFieldPublicRouter,
+  },
+];
+</file>
+
+<file path="prisma/schema.prisma">
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum RoleType {
+  USER
+  MENTOR
+  ADMIN
+}
+
+enum MentorOnboardingStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  COMPLETED
+}
+
+enum MentorApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  SUSPENDED
+}
+
+enum SchedulingConnectionStatus {
+  NOT_CONNECTED
+  CONNECTED
+  DISCONNECTED
+}
+
+enum OnboardingFieldType {
+  TEXT
+  TEXTAREA
+  NUMBER
+  SELECT
+  MULTI_SELECT
+  DATE
+  FILE
+}
+
+enum OnboardingSubmissionStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum MentorProfileStatus {
+  PUBLIC
+  PRIVATE
+  SUSPENDED
+}
+
+
+
+
+
+
+
+
+
+
+
+
+// -----------------------------------------------------MODELS--------------------------------------------------
+
+model User {
+  id String @id @default(cuid())
+
+  email        String @unique
+  passwordHash String
+
+  isEmailVerified Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  mentorProfile MentorProfile? @relation("UserMentorProfile")
+
+  roles    UserRole[]
+  sessions Session[]
+
+  emailVerifications   EmailVerificationToken[]
+  passwordResets       PasswordResetToken[]
+  OnboardingSubmission OnboardingSubmission[]
+
+  @@index([email])
+}
+
+model Role {
+  id String @id @default(cuid())
+
+  name RoleType @unique
+
+  createdAt DateTime @default(now())
+
+  users UserRole[]
+}
+
+model UserRole {
+  userId String
+  roleId String
+
+  assignedAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([userId, roleId])
+  @@index([roleId])
+}
+
+model Session {
+  id String @id @default(cuid())
+
+  userId String
+
+  refreshTokenHash String
+  tokenVersion     Int    @default(0)
+
+  userAgent String?
+  ipAddress String?
+
+  expiresAt DateTime
+
+  lastUsedAt DateTime?
+
+  revokedAt DateTime?
+
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@index([revokedAt])
+}
+
+model EmailVerificationToken {
+  id String @id @default(cuid())
+
+  userId String
+
+  tokenHash String
+
+  expiresAt DateTime
+
+  usedAt DateTime?
+
+  createdAt    DateTime @default(now())
+  attemptCount Int      @default(0)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model PasswordResetToken {
+  id String @id @default(cuid())
+
+  userId String
+
+  tokenHash String
+
+  expiresAt DateTime
+
+  usedAt DateTime?
+
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model MentorProfile {
+  id String @id @default(cuid())
+
+  userId String @unique
+
+  slug String @unique
+
+  headline String?
+
+  bio String?
+
+  profileImageUrl String?
+
+  expertiseTags Json?
+
+  socialLinks Json?
+
+  status MentorProfileStatus @default(PRIVATE)
+
+  isVerified Boolean @default(false)
+
+  suspendedReason String?
+
+  createdAt DateTime @default(now())
+
+  updatedAt DateTime @updatedAt
+
+  user User @relation( "UserMentorProfile", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([slug])
+
+  @@index([status])
+
+  @@index([isVerified])
+}
+
+// onboarding categories for mentors
+model OnboardingCategory {
+  id String @id @default(cuid())
+
+  name String @unique
+
+  slug String @unique
+
+  description String?
+
+  isActive Boolean @default(true)
+
+  createdAt DateTime @default(now())
+
+  updatedAt DateTime @updatedAt
+
+  fields               OnboardingField[]
+  OnboardingSubmission OnboardingSubmission[]
+}
+
+model OnboardingField {
+  id String @id @default(cuid())
+
+  categoryId String
+
+  label String
+
+  fieldKey String @unique
+
+  fieldType OnboardingFieldType
+
+  placeholder String?
+
+  helpText String?
+
+  isRequired Boolean @default(false)
+
+  sortOrder Int
+
+  isActive Boolean @default(true)
+
+  options Json?
+
+  createdAt DateTime @default(now())
+
+  updatedAt DateTime @updatedAt
+
+  category                   OnboardingCategory           @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  OnboardingSubmissionAnswer OnboardingSubmissionAnswer[]
+
+  @@index([categoryId])
+}
+
+model OnboardingSubmission {
+  id String @id @default(cuid())
+
+  userId String
+
+  categoryId String
+
+  status OnboardingSubmissionStatus @default(PENDING)
+
+  submittedAt DateTime @default(now())
+
+  reviewedAt DateTime?
+
+  reviewNotes String?
+
+  createdAt DateTime @default(now())
+
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  category OnboardingCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  answers OnboardingSubmissionAnswer[]
+
+  @@index([userId])
+  @@index([categoryId])
+  @@index([status])
+}
+
+model OnboardingSubmissionAnswer {
+  id String @id @default(cuid())
+
+  submissionId String
+
+  fieldId String
+
+  value Json
+
+  createdAt DateTime @default(now())
+
+  submission OnboardingSubmission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+
+  field OnboardingField @relation(fields: [fieldId], references: [id], onDelete: Cascade)
+
+  @@index([submissionId])
+  @@index([fieldId])
+}
 </file>
 
 </files>
