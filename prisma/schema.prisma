@@ -56,7 +56,18 @@ enum MentorProfileStatus {
   SUSPENDED
 }
 
+enum MentorServiceStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
 
+enum MentorSessionType {
+  ONE_ON_ONE
+  GROUP
+  CHAT
+  PRIORITY_DM
+}
 
 // -----------------------------------------------------MODELS--------------------------------------------------
 
@@ -199,6 +210,7 @@ model MentorProfile {
   approvalStatus MentorApprovalStatus
 
   schedulingConnectionStatus SchedulingConnectionStatus
+  services                   MentorService[]
 
   rejectionReason String?
 
@@ -225,7 +237,8 @@ model OnboardingCategory {
 
   description String?
 
-  isActive Boolean @default(true)
+  isActive       Boolean         @default(true)
+  mentorServices MentorService[]
 
   createdAt DateTime @default(now())
 
@@ -315,4 +328,47 @@ model OnboardingSubmissionAnswer {
 
   @@index([submissionId])
   @@index([fieldId])
+}
+
+model MentorService {
+  id String @id @default(cuid())
+
+  mentorProfileId String
+  categoryId      String
+
+  title String
+
+  slug String @unique
+
+  shortDescription String?
+
+  description String
+
+  priceInPaise Int
+
+  durationInMinutes Int
+
+  sessionType MentorSessionType
+
+  thumbnailUrl String?
+
+  bannerUrl String?
+
+  tags Json?
+
+  status MentorServiceStatus @default(DRAFT)
+
+  sortOrder Int @default(0)
+
+  createdAt DateTime @default(now())
+
+  updatedAt DateTime @updatedAt
+
+  mentorProfile MentorProfile @relation(fields: [mentorProfileId], references: [id], onDelete: Cascade)
+
+  category OnboardingCategory @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+
+  @@index([mentorProfileId])
+  @@index([categoryId])
+  @@index([mentorProfileId, status])
 }
