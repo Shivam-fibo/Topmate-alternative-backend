@@ -1,28 +1,26 @@
 import { RoleType } from "@prisma/client";
 import { Router } from "express";
 
-
 import { requireRoles } from "../../middlewares/role.middleware";
 import { validateRequest } from "../../middlewares/validation.middleware";
 import { asyncHandler } from "../../utils/async-handler";
 
 import {
-  createMentorProfileController,
   getOwnMentorProfileController,
-  getPublicMentorProfileController,
+  updateMentorProfileController,
 } from "./mentor-profile.controller";
-import { createMentorProfileSchema } from "./mentor-profile.validation";
+import { updateMentorProfileSchema } from "./mentor-profile.validation";
 
 const mentorProfileRouter = Router();
 
-mentorProfileRouter.post(
+mentorProfileRouter.patch(
   "/",
 
   requireRoles([RoleType.MENTOR]),
 
-  validateRequest(createMentorProfileSchema),
+  validateRequest(updateMentorProfileSchema),
 
-  asyncHandler(createMentorProfileController),
+  asyncHandler(updateMentorProfileController),
 );
 
 mentorProfileRouter.get(
@@ -31,12 +29,6 @@ mentorProfileRouter.get(
   requireRoles([RoleType.MENTOR]),
 
   asyncHandler(getOwnMentorProfileController),
-);
-
-mentorProfileRouter.get(
-  "/:slug",
-
-  asyncHandler(getPublicMentorProfileController),
 );
 
 export { mentorProfileRouter };

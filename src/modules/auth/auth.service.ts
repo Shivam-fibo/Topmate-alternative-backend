@@ -4,6 +4,7 @@ import { addDays } from "date-fns";
 import { AppError } from "../../common/errors/app-error";
 import { runTransaction } from "../../database/transaction";
 import { logger } from "../../logger";
+import { generateMentorSlug } from "../mentor-profile/mentor-profile.utils";
 
 import {
   assignRoleToUser,
@@ -93,7 +94,11 @@ export const registerUser = async (input: RegisterUserInput) => {
         tx,
       );
 
-      await createMentorProfile(createdUser.id, tx);
+      const emailPrefix = createdUser.email.split("@")[0];
+      const baseSlug = generateMentorSlug(emailPrefix);
+      const uniqueSlug = `${baseSlug}-${Math.floor(1000 + Math.random() * 9000)}`;
+
+      await createMentorProfile(createdUser.id, uniqueSlug, tx);
     }
 
     return createdUser;

@@ -60,6 +60,7 @@ export const assignRoleToUser = (
 
 export const createMentorProfile = (
   userId: string,
+  slug: string,
   tx?: Prisma.TransactionClient,
 ) => {
   const database = tx ?? prisma;
@@ -67,6 +68,10 @@ export const createMentorProfile = (
   return database.mentorProfile.create({
     data: {
       userId,
+      slug,
+      onboardingStatus: "NOT_STARTED",
+      approvalStatus: "PENDING",
+      schedulingConnectionStatus: "NOT_CONNECTED",
     },
   });
 };

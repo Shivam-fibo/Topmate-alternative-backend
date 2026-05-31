@@ -4,7 +4,6 @@ import { AppError } from "../../common/errors/app-error";
 import { sendSuccessResponse } from "../../utils/api-response";
 
 import {
-  createMentorProfileService,
   getOwnMentorProfileService,
   getPublicMentorProfileService,
   updateMentorProfileService,
@@ -12,23 +11,6 @@ import {
 
 type MentorSlugParams = {
   slug: string;
-};
-
-export const createMentorProfileController = async (
-  req: Request,
-  res: Response,
-): Promise<void> => {
-  if (!req.user) {
-    throw new AppError("Authentication required", 401, "UNAUTHENTICATED");
-  }
-
-  const profile = await createMentorProfileService({
-    userId: req.user.userId,
-
-    ...req.body,
-  });
-
-  sendSuccessResponse(res, 201, "Mentor profile created successfully", profile);
 };
 
 export const getOwnMentorProfileController = async (

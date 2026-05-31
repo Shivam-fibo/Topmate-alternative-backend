@@ -63,6 +63,10 @@ export const findSubmissionById = (submissionId: string) => {
     where: {
       id: submissionId,
     },
+
+    include: {
+      user: true,
+    },
   });
 };
 
@@ -116,6 +120,31 @@ export const addMentorRoleToUser = async (userId: string) => {
       userId,
 
       roleId: mentorRole.id,
+    },
+  });
+};
+
+export const createInitialMentorProfile = async (
+  userId: string,
+  slug: string,
+) => {
+  return prisma.mentorProfile.create({
+    data: {
+      userId,
+      slug,
+      status: "PRIVATE",
+      onboardingStatus: "COMPLETED",
+      approvalStatus: "APPROVED",
+      schedulingConnectionStatus: "NOT_CONNECTED",
+      approvedAt: new Date(),
+    },
+  });
+};
+
+export const findMentorProfileBySlug = async (slug: string) => {
+  return prisma.mentorProfile.findUnique({
+    where: {
+      slug,
     },
   });
 };

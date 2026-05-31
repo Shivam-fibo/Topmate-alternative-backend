@@ -2,11 +2,14 @@ import { OnboardingFieldType } from "@prisma/client";
 import type { Prisma } from "@prisma/client";
 
 import { AppError } from "../../../common/errors/app-error";
+import { generateMentorSlug } from "../../mentor-profile/mentor-profile.utils";
 
 import {
   addMentorRoleToUser,
   findSubmissionById,
   updateSubmissionReview,
+  createInitialMentorProfile,
+  findMentorProfileBySlug,
 } from "./onboarding-submission.repository";
 import {
   createSubmission,
@@ -162,6 +165,27 @@ export const reviewSubmissionService = async (input: ReviewSubmissionInput) => {
 
   if (input.status === "APPROVED") {
     await addMentorRoleToUser(submission.userId);
+
+    const userEmail = (submission as any).user.email;
+    const emailPrefix = userEmail.split("@")[0];
+    let baseSlug = generateMentorSlug(emailPrefix);
+
+    if (baseSlug.length < 3) {
+      baseSlug = `${baseSlug}-mentor`;
+    }
+
+    let finalSlug = baseSlug;
+    let suffix = 1;
+    while (true) {
+      const existing = await findMentorProfileBySlug(finalSlug);
+      if (!existing) {
+        break;
+      }
+      finalSlug = `${baseSlug}-${suffix}`;
+      suffix++;
+    }
+
+    await createInitialMentorProfile(submission.userId, finalSlug);
   }
 
   return updatedSubmission;

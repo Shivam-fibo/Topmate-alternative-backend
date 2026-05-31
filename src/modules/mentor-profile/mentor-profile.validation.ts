@@ -11,18 +11,19 @@ const socialLinksSchema = z.object({
   website: z.string().url().optional(),
 });
 
-export const createMentorProfileSchema = {
+export const updateMentorProfileSchema = {
   body: z.object({
     slug: z
       .string()
       .trim()
       .min(3)
       .max(50)
-      .regex(/^[a-z0-9-]+$/),
+      .regex(/^[a-z0-9-]+$/)
+      .optional(),
 
-    headline: z.string().trim().min(5).max(120),
+    headline: z.string().trim().min(5).max(120).optional(),
 
-    bio: z.string().trim().min(20).max(2000),
+    bio: z.string().trim().min(20).max(2000).optional(),
 
     profileImageUrl: z.string().url().optional(),
 
@@ -32,10 +33,6 @@ export const createMentorProfileSchema = {
 
     status: z.nativeEnum(MentorProfileStatus).optional(),
   }),
-};
-
-export const updateMentorProfileSchema = {
-  body: createMentorProfileSchema.body.partial(),
 };
 
 export const mentorSlugParamsSchema = {

@@ -29,12 +29,6 @@ export const findPublicMentorProfileBySlug = (slug: string) => {
   });
 };
 
-export const createMentorProfile = (data: Prisma.MentorProfileCreateInput) => {
-  return prisma.mentorProfile.create({
-    data,
-  });
-};
-
 export const updateMentorProfile = (
   userId: string,
 
