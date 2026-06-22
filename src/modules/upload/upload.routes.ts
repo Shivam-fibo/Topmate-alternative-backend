@@ -12,7 +12,7 @@ const uploadRouter = Router();
 uploadRouter.post(
   "/",
 
-  requireRoles([RoleType.ADMIN, RoleType.MENTOR]),
+  requireRoles([RoleType.ADMIN, RoleType.MENTOR, RoleType.USER]),
 
   uploadMiddleware.single("file"),
 
