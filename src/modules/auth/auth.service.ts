@@ -14,6 +14,7 @@ import {
   findRoleByName,
   findSessionById,
   findUserByEmail,
+  findUserById,
   revokeSession,
   rotateSessionToken,
 } from "./auth.repository";
@@ -341,3 +342,26 @@ export const logoutUser = async (input: LogoutInput): Promise<void> => {
     );
   });
 };
+
+export const getCurrentUser = async (userId: string) => {
+  const user = await findUserById(userId);
+
+  if (!user) {
+    throw new AppError("User not found", 404, "USER_NOT_FOUND");
+  }
+
+  const roles = user.roles.map((userRole) => userRole.role.name);
+
+  return {
+    user: {
+      id: user.id,
+
+      email: user.email,
+
+      isEmailVerified: user.isEmailVerified,
+
+      roles,
+    },
+  };
+};
+

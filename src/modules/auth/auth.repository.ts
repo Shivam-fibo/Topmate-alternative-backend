@@ -28,6 +28,25 @@ export const findUserByEmail = (email: string) => {
   });
 };
 
+export const findUserById = (id: string) => {
+  return prisma.user.findUnique({
+    where: {
+      id,
+    },
+
+    include: {
+      roles: {
+        include: {
+          role: true,
+        },
+      },
+
+      mentorProfile: true,
+    },
+  });
+};
+
+
 export const findRoleByName = (roleName: RoleType) => {
   return prisma.role.findUnique({
     where: {

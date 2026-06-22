@@ -1,5 +1,6 @@
 import { Router } from "express";
 
+import { authMiddleware } from "../../middlewares/auth.middleware";
 import { validateRequest } from "../../middlewares/validation.middleware";
 
 import {
@@ -8,6 +9,7 @@ import {
   loginUserController,
   refreshTokenController,
   logoutController,
+  getMeController,
 } from "./auth.controller";
 import {
   registerUserSchema,
@@ -59,4 +61,7 @@ authRouter.post(
   logoutController,
 );
 
+authRouter.get("/me", authMiddleware, getMeController);
+
 export { authRouter };
+

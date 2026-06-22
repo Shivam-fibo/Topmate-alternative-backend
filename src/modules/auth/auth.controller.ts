@@ -1,5 +1,6 @@
 import type { Request, Response } from "express";
 
+import { AppError } from "../../common/errors/app-error";
 import { sendSuccessResponse } from "../../utils/api-response";
 
 import {
@@ -7,6 +8,7 @@ import {
   loginUser,
   refreshAuthToken,
   logoutUser,
+  getCurrentUser,
 } from "./auth.service";
 import { verifyEmailOtp } from "./services/verify-email.service";
 
@@ -86,3 +88,22 @@ export const logoutController = async (
 
   sendSuccessResponse(res, 200, "Logout successful", null);
 };
+
+export const getMeController = async (
+  req: Request,
+  res: Response,
+): Promise<void> => {
+  if (!req.user) {
+    throw new AppError("Authentication required", 401, "UNAUTHORIZED");
+  }
+
+  const userResponse = await getCurrentUser(req.user.userId);
+
+  sendSuccessResponse(
+    res,
+    200,
+    "Current user fetched successfully",
+    userResponse,
+  );
+};
+

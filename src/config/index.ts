@@ -5,7 +5,7 @@ export const config = {
 
   nodeEnv: env.NODE_ENV,
 
-  apiPrefix: "/api/v1",
+  apiPrefix: "/api",
 
   trustProxy: env.TRUST_PROXY,
 
