@@ -16,6 +16,12 @@ export const createOnboardingSubmissionSchema = {
   }),
 };
 
+export const getOnboardingSubmissionsSchema = {
+  query: z.object({
+    status: z.enum(["PENDING", "APPROVED", "REJECTED"]).optional(),
+  }),
+};
+
 export const reviewSubmissionSchema = {
   body: z.object({
     status: z.enum(["APPROVED", "REJECTED"]),

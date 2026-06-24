@@ -7,7 +7,6 @@ import { asyncHandler } from "../../utils/async-handler";
 import { getAdminMeController } from "./admin.controller";
 
 const adminRouter = Router();
-
 adminRouter.get(
   "/me",
 

@@ -7,6 +7,7 @@ import { generateMentorSlug } from "../../mentor-profile/mentor-profile.utils";
 import {
   addMentorRoleToUser,
   findSubmissionById,
+  findOnboardingSubmissions,
   updateSubmissionReview,
   createInitialMentorProfile,
   findMentorProfileBySlug,
@@ -37,6 +38,10 @@ interface ReviewSubmissionInput {
   status: "APPROVED" | "REJECTED";
 
   reviewNotes?: string;
+}
+
+interface GetSubmissionsInput {
+  status?: "PENDING" | "APPROVED" | "REJECTED";
 }
 const validateFieldValue = (
   fieldType: OnboardingFieldType,
@@ -138,6 +143,12 @@ export const createOnboardingSubmissionService = async (
 
     answers: input.answers,
   });
+};
+
+export const getOnboardingSubmissionsService = async (
+  input: GetSubmissionsInput,
+) => {
+  return findOnboardingSubmissions(input.status);
 };
 
 export const reviewSubmissionService = async (input: ReviewSubmissionInput) => {

@@ -58,6 +58,46 @@ export const findPendingSubmissionByUserId = (userId: string) => {
   });
 };
 
+export const findOnboardingSubmissions = (
+  status?: "PENDING" | "APPROVED" | "REJECTED",
+) => {
+  return prisma.onboardingSubmission.findMany({
+    where: status
+      ? {
+          status,
+        }
+      : undefined,
+
+    include: {
+      user: {
+        select: {
+          id: true,
+
+          email: true,
+        },
+      },
+
+      category: true,
+
+      answers: {
+        include: {
+          field: true,
+        },
+
+        orderBy: {
+          field: {
+            sortOrder: "asc",
+          },
+        },
+      },
+    },
+
+    orderBy: {
+      submittedAt: "desc",
+    },
+  });
+};
+
 export const findSubmissionById = (submissionId: string) => {
   return prisma.onboardingSubmission.findUnique({
     where: {
@@ -88,6 +128,30 @@ export const updateSubmissionReview = (
       reviewNotes,
 
       reviewedAt: new Date(),
+    },
+
+    include: {
+      user: {
+        select: {
+          id: true,
+
+          email: true,
+        },
+      },
+
+      category: true,
+
+      answers: {
+        include: {
+          field: true,
+        },
+
+        orderBy: {
+          field: {
+            sortOrder: "asc",
+          },
+        },
+      },
     },
   });
 };

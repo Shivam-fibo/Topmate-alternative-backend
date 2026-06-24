@@ -5,6 +5,7 @@ import { sendSuccessResponse } from "../../../utils/api-response";
 
 import {
   createOnboardingSubmissionService,
+  getOnboardingSubmissionsService,
   reviewSubmissionService,
 } from "./onboarding-submission.service";
 
@@ -27,6 +28,22 @@ export const createOnboardingSubmissionController = async (
     201,
     "Onboarding submitted successfully",
     submission,
+  );
+};
+
+export const getOnboardingSubmissionsController = async (
+  req: Request,
+  res: Response,
+): Promise<void> => {
+  const submissions = await getOnboardingSubmissionsService({
+    status: req.query.status as "PENDING" | "APPROVED" | "REJECTED" | undefined,
+  });
+
+  sendSuccessResponse(
+    res,
+    200,
+    "Onboarding submissions fetched successfully",
+    submissions,
   );
 };
 

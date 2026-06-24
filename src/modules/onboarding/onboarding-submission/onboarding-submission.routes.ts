@@ -7,10 +7,12 @@ import { asyncHandler } from "../../../utils/async-handler";
 
 import {
   createOnboardingSubmissionController,
+  getOnboardingSubmissionsController,
   reviewSubmissionController,
 } from "./onboarding-submission.controller";
 import {
   createOnboardingSubmissionSchema,
+  getOnboardingSubmissionsSchema,
   reviewSubmissionSchema,
 } from "./onboarding-submission.validation";
 
@@ -22,6 +24,16 @@ onboardingSubmissionRouter.post(
   validateRequest(createOnboardingSubmissionSchema),
 
   asyncHandler(createOnboardingSubmissionController),
+);
+
+onboardingSubmissionRouter.get(
+  "/",
+
+  requireRoles([RoleType.ADMIN]),
+
+  validateRequest(getOnboardingSubmissionsSchema),
+
+  asyncHandler(getOnboardingSubmissionsController),
 );
 
 onboardingSubmissionRouter.patch(
