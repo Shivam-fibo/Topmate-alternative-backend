@@ -1,13 +1,9 @@
-import type {
-  MentorSessionType,
-  Prisma} from "@prisma/client";
-import {
-  MentorProfileStatus,
-  MentorServiceStatus
-} from "@prisma/client";
+import type { MentorSessionType, Prisma } from "@prisma/client";
+import { MentorProfileStatus, MentorServiceStatus } from "@prisma/client";
 
 import { AppError } from "../../common/errors/app-error";
 import { findMentorProfileByUserId } from "../mentor-profile/mentor-profile.repository";
+import { findOnboardingCategoryById } from "../onboarding/onboarding-category/onboarding-category.repository";
 
 import {
   createMentorService,
@@ -26,7 +22,7 @@ interface CreateMentorServiceInput {
 
   title: string;
 
-  slug: string;
+  slug?: string;
 
   shortDescription?: string;
 
@@ -43,8 +39,6 @@ interface CreateMentorServiceInput {
   bannerUrl?: string;
 
   tags?: string[];
-
-  status?: MentorServiceStatus;
 
   sortOrder?: number;
 }
@@ -102,22 +96,52 @@ export const createMentorServiceService = async (
     );
   }
 
-  const normalizedSlug = generateMentorServiceSlug(input.slug);
-
-  const existingSlug = await findMentorServiceBySlug(normalizedSlug);
-
-  if (existingSlug) {
+  if (mentorProfile.approvalStatus !== "APPROVED") {
     throw new AppError(
-      "Service slug already exists",
-      409,
-      "SERVICE_SLUG_ALREADY_EXISTS",
+      "Mentor profile is not approved",
+      403,
+      "MENTOR_PROFILE_NOT_APPROVED",
     );
+  }
+
+  const category = await findOnboardingCategoryById(input.categoryId);
+  if (!category) {
+    throw new AppError("Category not found", 404, "CATEGORY_NOT_FOUND");
+  }
+
+  if (!category.isActive) {
+    throw new AppError("Category is inactive", 400, "CATEGORY_INACTIVE");
+  }
+
+  let resolvedSlug: string;
+  if (input.slug) {
+    resolvedSlug = generateMentorServiceSlug(input.slug);
+    const existingSlug = await findMentorServiceBySlug(resolvedSlug);
+    if (existingSlug) {
+      throw new AppError(
+        "Service slug already exists",
+        409,
+        "SERVICE_SLUG_ALREADY_EXISTS",
+      );
+    }
+  } else {
+    const baseSlug = generateMentorServiceSlug(input.title);
+    resolvedSlug = baseSlug;
+    let counter = 1;
+    while (true) {
+      const existingSlug = await findMentorServiceBySlug(resolvedSlug);
+      if (!existingSlug) {
+        break;
+      }
+      resolvedSlug = `${baseSlug}-${counter}`;
+      counter++;
+    }
   }
 
   return createMentorService({
     title: input.title,
 
-    slug: normalizedSlug,
+    slug: resolvedSlug,
 
     shortDescription: input.shortDescription,
 
@@ -135,7 +159,7 @@ export const createMentorServiceService = async (
 
     tags: input.tags as Prisma.InputJsonValue,
 
-    status: input.status ?? MentorServiceStatus.DRAFT,
+    status: MentorServiceStatus.DRAFT,
 
     sortOrder: input.sortOrder ?? 0,
 
@@ -192,6 +216,16 @@ export const updateMentorServiceService = async (
     );
   }
 
+  if (input.categoryId) {
+    const category = await findOnboardingCategoryById(input.categoryId);
+    if (!category) {
+      throw new AppError("Category not found", 404, "CATEGORY_NOT_FOUND");
+    }
+    if (!category.isActive) {
+      throw new AppError("Category is inactive", 400, "CATEGORY_INACTIVE");
+    }
+  }
+
   let normalizedSlug: string | undefined;
 
   if (input.slug) {
@@ -236,8 +270,6 @@ export const updateMentorServiceService = async (
     bannerUrl: input.bannerUrl,
 
     tags: input.tags as Prisma.InputJsonValue,
-
-    status: input.status,
 
     sortOrder: input.sortOrder,
   });

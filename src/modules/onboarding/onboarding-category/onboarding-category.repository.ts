@@ -36,6 +36,14 @@ export const findOnboardingCategoryBySlug = (slug: string) => {
   });
 };
 
+export const findOnboardingCategoryById = (id: string) => {
+  return prisma.onboardingCategory.findUnique({
+    where: {
+      id,
+    },
+  });
+};
+
 export const getAllOnboardingCategories = () => {
   return prisma.onboardingCategory.findMany({
     orderBy: {

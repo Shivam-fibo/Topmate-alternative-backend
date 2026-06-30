@@ -12,7 +12,8 @@ export const createMentorServiceSchema = {
       .trim()
       .min(3)
       .max(100)
-      .regex(/^[a-z0-9-]+$/),
+      .regex(/^[a-z0-9-]+$/)
+      .optional(),
 
     shortDescription: z.string().trim().max(300).optional(),
 
@@ -29,8 +30,6 @@ export const createMentorServiceSchema = {
     bannerUrl: z.string().url().optional(),
 
     tags: z.array(z.string()).max(20).optional(),
-
-    status: z.nativeEnum(MentorServiceStatus).optional(),
 
     sortOrder: z.number().int().min(0).optional(),
   }),
