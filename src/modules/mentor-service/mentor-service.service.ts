@@ -5,6 +5,10 @@ import { AppError } from "../../common/errors/app-error";
 import { findMentorProfileByUserId } from "../mentor-profile/mentor-profile.repository";
 import { findOnboardingCategoryById } from "../onboarding/onboarding-category/onboarding-category.repository";
 
+import type {
+  FindMentorServicesOptions,
+  FindPublicMentorServicesOptions,
+} from "./mentor-service.repository";
 import {
   createMentorService,
   findMentorServiceById,
@@ -12,6 +16,8 @@ import {
   findMentorServicesByMentor,
   findPublicMentorServiceBySlug,
   updateMentorService,
+  findPublicMentorServices,
+  deleteMentorService,
 } from "./mentor-service.repository";
 import { generateMentorServiceSlug } from "./mentor-service.utils";
 
@@ -73,6 +79,11 @@ interface UpdateMentorServiceInput {
   status?: MentorServiceStatus;
 
   sortOrder?: number;
+}
+
+interface ServiceLifecycleInput {
+  userId: string;
+  serviceId: string;
 }
 
 export const createMentorServiceService = async (
@@ -198,6 +209,14 @@ export const updateMentorServiceService = async (
     );
   }
 
+  if (mentorProfile.approvalStatus !== "APPROVED") {
+    throw new AppError(
+      "Mentor profile is not approved",
+      403,
+      "MENTOR_PROFILE_NOT_APPROVED",
+    );
+  }
+
   const existingService = await findMentorServiceById(input.serviceId);
 
   if (!existingService) {
@@ -275,7 +294,10 @@ export const updateMentorServiceService = async (
   });
 };
 
-export const getOwnMentorServicesService = async (userId: string) => {
+export const getOwnMentorServicesService = async (
+  userId: string,
+  options: FindMentorServicesOptions,
+) => {
   const mentorProfile = await findMentorProfileByUserId(userId);
 
   if (!mentorProfile) {
@@ -286,7 +308,78 @@ export const getOwnMentorServicesService = async (userId: string) => {
     );
   }
 
-  return findMentorServicesByMentor(mentorProfile.id);
+  const { items, totalItems } = await findMentorServicesByMentor(
+    mentorProfile.id,
+    options,
+  );
+
+  const totalPages = Math.ceil(totalItems / options.limit);
+  const hasNextPage = options.page < totalPages;
+  const hasPreviousPage = options.page > 1;
+
+  return {
+    items,
+    pagination: {
+      currentPage: options.page,
+      totalPages,
+      totalItems,
+      limit: options.limit,
+      hasNextPage,
+      hasPreviousPage,
+    },
+  };
+};
+
+type PublicServiceWithRelations = Prisma.MentorServiceGetPayload<{
+  include: { category: true; mentorProfile: true };
+}>;
+
+const mapToPublicService = (service: PublicServiceWithRelations) => ({
+  id: service.id,
+  title: service.title,
+  slug: service.slug,
+  shortDescription: service.shortDescription,
+  description: service.description,
+  thumbnailUrl: service.thumbnailUrl,
+  bannerUrl: service.bannerUrl,
+  priceInPaise: service.priceInPaise,
+  durationInMinutes: service.durationInMinutes,
+  sessionType: service.sessionType,
+  tags: service.tags,
+  category: {
+    id: service.category.id,
+    name: service.category.name,
+    slug: service.category.slug,
+  },
+  mentor: {
+    slug: service.mentorProfile.slug,
+    profileImageUrl: service.mentorProfile.profileImageUrl,
+    headline: service.mentorProfile.headline,
+  },
+});
+
+export const getPublicMentorServicesService = async (
+  options: FindPublicMentorServicesOptions,
+) => {
+  const { items, totalItems } = await findPublicMentorServices(options);
+
+  const totalPages = Math.ceil(totalItems / options.limit);
+  const hasNextPage = options.page < totalPages;
+  const hasPreviousPage = options.page > 1;
+
+  const publicItems = items.map(mapToPublicService);
+
+  return {
+    items: publicItems,
+    pagination: {
+      currentPage: options.page,
+      totalPages,
+      totalItems,
+      limit: options.limit,
+      hasNextPage,
+      hasPreviousPage,
+    },
+  };
 };
 
 export const getPublicMentorServiceService = async (slug: string) => {
@@ -300,5 +393,166 @@ export const getPublicMentorServiceService = async (slug: string) => {
     );
   }
 
-  return service;
+  return mapToPublicService(service);
+};
+
+const validateAndGetServiceOwnership = async (
+  userId: string,
+  serviceId: string,
+) => {
+  const mentorProfile = await findMentorProfileByUserId(userId);
+
+  if (!mentorProfile) {
+    throw new AppError(
+      "Mentor profile not found",
+      404,
+      "MENTOR_PROFILE_NOT_FOUND",
+    );
+  }
+
+  if (mentorProfile.status === MentorProfileStatus.SUSPENDED) {
+    throw new AppError(
+      "Suspended mentors cannot perform lifecycle actions",
+      403,
+      "MENTOR_PROFILE_SUSPENDED",
+    );
+  }
+
+  if (mentorProfile.approvalStatus !== "APPROVED") {
+    throw new AppError(
+      "Mentor profile is not approved",
+      403,
+      "MENTOR_PROFILE_NOT_APPROVED",
+    );
+  }
+
+  const existingService = await findMentorServiceById(serviceId);
+
+  if (!existingService) {
+    throw new AppError(
+      "Mentor service not found",
+      404,
+      "MENTOR_SERVICE_NOT_FOUND",
+    );
+  }
+
+  if (existingService.mentorProfileId !== mentorProfile.id) {
+    throw new AppError(
+      "You do not own this service",
+      403,
+      "MENTOR_SERVICE_FORBIDDEN",
+    );
+  }
+
+  return existingService;
+};
+
+export const publishMentorServiceService = async (
+  input: ServiceLifecycleInput,
+) => {
+  const existingService = await validateAndGetServiceOwnership(
+    input.userId,
+    input.serviceId,
+  );
+
+  if (existingService.status === MentorServiceStatus.ARCHIVED) {
+    throw new AppError(
+      "Cannot publish an archived service",
+      400,
+      "INVALID_STATE_TRANSITION",
+    );
+  }
+
+  if (existingService.status === MentorServiceStatus.PUBLISHED) {
+    throw new AppError(
+      "Service is already published",
+      400,
+      "INVALID_STATE_TRANSITION",
+    );
+  }
+
+  const publishedAt = existingService.publishedAt ?? new Date();
+
+  return updateMentorService(input.serviceId, {
+    status: MentorServiceStatus.PUBLISHED,
+    publishedAt,
+  });
+};
+
+export const unpublishMentorServiceService = async (
+  input: ServiceLifecycleInput,
+) => {
+  const existingService = await validateAndGetServiceOwnership(
+    input.userId,
+    input.serviceId,
+  );
+
+  if (existingService.status === MentorServiceStatus.ARCHIVED) {
+    throw new AppError(
+      "Cannot unpublish an archived service",
+      400,
+      "INVALID_STATE_TRANSITION",
+    );
+  }
+
+  if (existingService.status === MentorServiceStatus.DRAFT) {
+    throw new AppError(
+      "Service is already a draft",
+      400,
+      "INVALID_STATE_TRANSITION",
+    );
+  }
+
+  return updateMentorService(input.serviceId, {
+    status: MentorServiceStatus.DRAFT,
+  });
+};
+
+export const archiveMentorServiceService = async (
+  input: ServiceLifecycleInput,
+) => {
+  const existingService = await validateAndGetServiceOwnership(
+    input.userId,
+    input.serviceId,
+  );
+
+  if (existingService.status === MentorServiceStatus.ARCHIVED) {
+    throw new AppError(
+      "Service is already archived",
+      400,
+      "INVALID_STATE_TRANSITION",
+    );
+  }
+
+  const archivedAt = existingService.archivedAt ?? new Date();
+
+  return updateMentorService(input.serviceId, {
+    status: MentorServiceStatus.ARCHIVED,
+    archivedAt,
+  });
+};
+
+export const canDeleteMentorService = async (
+  _serviceId: string,
+): Promise<boolean> => {
+  // Placeholder logic (future: verify booking presence)
+  return true;
+};
+
+export const deleteMentorServiceService = async (
+  input: ServiceLifecycleInput,
+) => {
+  await validateAndGetServiceOwnership(input.userId, input.serviceId);
+
+  const canDelete = await canDeleteMentorService(input.serviceId);
+
+  if (canDelete) {
+    return deleteMentorService(input.serviceId);
+  } else {
+    throw new AppError(
+      "Cannot delete service with existing bookings",
+      400,
+      "CANNOT_DELETE_SERVICE_WITH_BOOKINGS",
+    );
+  }
 };
