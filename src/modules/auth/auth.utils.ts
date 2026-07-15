@@ -84,3 +84,35 @@ export const verifyRefreshToken = (token: string): RefreshTokenPayload => {
 export const generateOtp = (): string => {
   return Math.floor(100000 + Math.random() * 900000).toString();
 };
+
+export interface PasswordResetSessionPayload {
+  userId: string;
+
+  resetTokenId: string;
+
+  purpose: "password_reset";
+}
+
+export const generatePasswordResetSessionToken = (
+  payload: PasswordResetSessionPayload,
+): string => {
+  return jwt.sign(payload, config.jwt.accessSecret, {
+    expiresIn: "15m",
+  });
+};
+
+export const verifyPasswordResetSessionToken = (
+  token: string,
+): PasswordResetSessionPayload => {
+  const decoded = jwt.verify(token, config.jwt.accessSecret);
+
+  if (
+    typeof decoded === "string" ||
+    !decoded ||
+    decoded.purpose !== "password_reset"
+  ) {
+    throw new Error("Invalid token purpose");
+  }
+
+  return decoded as unknown as PasswordResetSessionPayload;
+};

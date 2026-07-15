@@ -35,3 +35,35 @@ export const logoutSchema = z.object({
 });
 
 export type LogoutSchema = z.infer<typeof logoutSchema>;
+
+export const forgotPasswordSchema = z.object({
+  email: z.string().email("Invalid email address"),
+});
+
+export type ForgotPasswordSchema = z.infer<typeof forgotPasswordSchema>;
+
+export const verifyResetPasswordOtpSchema = z.object({
+  email: z.string().email("Invalid email address"),
+
+  otp: z.string().length(6, "OTP must be exactly 6 characters"),
+});
+
+export type VerifyResetPasswordOtpSchema = z.infer<
+  typeof verifyResetPasswordOtpSchema
+>;
+
+export const resendResetPasswordOtpSchema = z.object({
+  email: z.string().email("Invalid email address"),
+});
+
+export type ResendResetPasswordOtpSchema = z.infer<
+  typeof resendResetPasswordOtpSchema
+>;
+
+export const resetPasswordSchema = z.object({
+  token: z.string().min(1, "Reset token is required"),
+
+  password: z.string().min(8, "Password must be at least 8 characters").max(72),
+});
+
+export type ResetPasswordSchema = z.infer<typeof resetPasswordSchema>;

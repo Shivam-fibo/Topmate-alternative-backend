@@ -10,6 +10,12 @@ import {
   logoutUser,
   getCurrentUser,
 } from "./auth.service";
+import {
+  forgotPassword,
+  resendResetPasswordOtp,
+  resetPassword,
+  verifyResetPasswordOtp,
+} from "./services/password-reset.service";
 import { verifyEmailOtp } from "./services/verify-email.service";
 
 export const registerUserController = async (
@@ -107,3 +113,48 @@ export const getMeController = async (
   );
 };
 
+export const forgotPasswordController = async (
+  req: Request,
+  res: Response,
+): Promise<void> => {
+  await forgotPassword(req.body.email);
+
+  sendSuccessResponse(
+    res,
+    200,
+    "Password reset instructions sent to your email",
+    null,
+  );
+};
+
+export const verifyResetPasswordOtpController = async (
+  req: Request,
+  res: Response,
+): Promise<void> => {
+  const result = await verifyResetPasswordOtp(req.body.email, req.body.otp);
+
+  sendSuccessResponse(res, 200, "OTP verified successfully", result);
+};
+
+export const resendResetPasswordOtpController = async (
+  req: Request,
+  res: Response,
+): Promise<void> => {
+  await resendResetPasswordOtp(req.body.email);
+
+  sendSuccessResponse(
+    res,
+    200,
+    "Password reset instructions resent to your email",
+    null,
+  );
+};
+
+export const resetPasswordController = async (
+  req: Request,
+  res: Response,
+): Promise<void> => {
+  await resetPassword(req.body.token, req.body.password);
+
+  sendSuccessResponse(res, 200, "Password reset successful", null);
+};

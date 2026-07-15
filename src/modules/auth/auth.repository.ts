@@ -46,7 +46,6 @@ export const findUserById = (id: string) => {
   });
 };
 
-
 export const findRoleByName = (roleName: RoleType) => {
   return prisma.role.findUnique({
     where: {
@@ -276,6 +275,80 @@ export const incrementEmailVerificationAttempts = (tokenId: string) => {
       attemptCount: {
         increment: 1,
       },
+    },
+  });
+};
+
+export const createPasswordResetToken = (
+  data: { userId: string; tokenHash: string; expiresAt: Date },
+  tx?: Prisma.TransactionClient,
+) => {
+  const database = tx ?? prisma;
+
+  return database.passwordResetToken.create({
+    data,
+  });
+};
+
+export const findLatestPasswordResetToken = (
+  userId: string,
+  tx?: Prisma.TransactionClient,
+) => {
+  const database = tx ?? prisma;
+
+  return database.passwordResetToken.findFirst({
+    where: {
+      userId,
+      usedAt: null,
+    },
+    orderBy: {
+      createdAt: "desc",
+    },
+  });
+};
+
+export const findPasswordResetTokenById = (
+  tokenId: string,
+  tx?: Prisma.TransactionClient,
+) => {
+  const database = tx ?? prisma;
+
+  return database.passwordResetToken.findUnique({
+    where: {
+      id: tokenId,
+    },
+  });
+};
+
+export const markPasswordResetTokenUsed = (
+  tokenId: string,
+  tx?: Prisma.TransactionClient,
+) => {
+  const database = tx ?? prisma;
+
+  return database.passwordResetToken.update({
+    where: {
+      id: tokenId,
+    },
+    data: {
+      usedAt: new Date(),
+    },
+  });
+};
+
+export const updateUserPassword = (
+  userId: string,
+  passwordHash: string,
+  tx?: Prisma.TransactionClient,
+) => {
+  const database = tx ?? prisma;
+
+  return database.user.update({
+    where: {
+      id: userId,
+    },
+    data: {
+      passwordHash,
     },
   });
 };

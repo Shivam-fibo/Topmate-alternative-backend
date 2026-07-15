@@ -10,6 +10,10 @@ import {
   refreshTokenController,
   logoutController,
   getMeController,
+  forgotPasswordController,
+  verifyResetPasswordOtpController,
+  resendResetPasswordOtpController,
+  resetPasswordController,
 } from "./auth.controller";
 import {
   registerUserSchema,
@@ -17,6 +21,10 @@ import {
   loginSchema,
   refreshTokenSchema,
   logoutSchema,
+  forgotPasswordSchema,
+  verifyResetPasswordOtpSchema,
+  resendResetPasswordOtpSchema,
+  resetPasswordSchema,
 } from "./auth.validation";
 
 const authRouter = Router();
@@ -63,5 +71,36 @@ authRouter.post(
 
 authRouter.get("/me", authMiddleware, getMeController);
 
-export { authRouter };
+authRouter.post(
+  "/forgot-password",
+  validateRequest({
+    body: forgotPasswordSchema,
+  }),
+  forgotPasswordController,
+);
 
+authRouter.post(
+  "/verify-reset-password-otp",
+  validateRequest({
+    body: verifyResetPasswordOtpSchema,
+  }),
+  verifyResetPasswordOtpController,
+);
+
+authRouter.post(
+  "/resend-reset-password-otp",
+  validateRequest({
+    body: resendResetPasswordOtpSchema,
+  }),
+  resendResetPasswordOtpController,
+);
+
+authRouter.post(
+  "/reset-password",
+  validateRequest({
+    body: resetPasswordSchema,
+  }),
+  resetPasswordController,
+);
+
+export { authRouter };
